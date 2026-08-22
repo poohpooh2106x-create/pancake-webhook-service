@@ -1,0 +1,15 @@
+{
+  "name": "pancake-webhook-service",
+  "version": "1.0.0",
+  "description": "Standalone Netlify Webhook Service for PanCake to Google Sheets Lead Automation",
+  "main": "netlify/functions/pancake.js",
+  "scripts": {
+    "test": "node test/test-handler.js"
+  },
+  "dependencies": {
+    "googleapis": "^144.0.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.7"
+  }
+}

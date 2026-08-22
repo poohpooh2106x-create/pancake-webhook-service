@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PanCake Webhook Service - Lead Automation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --success: #16a34a;
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Prompt', sans-serif;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 20px;
+    }
+    .container {
+      max-width: 760px;
+      width: 100%;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      background: rgba(22, 163, 74, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(74, 222, 128, 0.3);
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 15px;
+    }
+    .badge .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4ade80;
+      box-shadow: 0 0 10px #4ade80;
+    }
+    h1 {
+      font-size: 26px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .endpoint-box {
+      background: #090d16;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .endpoint-url {
+      font-family: monospace;
+      font-size: 14px;
+      color: #38bdf8;
+      word-break: break-all;
+    }
+    .copy-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+    .copy-btn:hover {
+      background: var(--primary-dark);
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 15px;
+    }
+    .info-item {
+      background: rgba(255, 255, 255, 0.03);
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .info-label {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .info-val {
+      font-size: 14px;
+      font-weight: 500;
+      margin-top: 2px;
+    }
+    /* Form test */
+    .form-group {
+      margin-bottom: 12px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    input {
+      width: 100%;
+      background: #090d16;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: white;
+      font-size: 14px;
+      outline: none;
+    }
+    input:focus {
+      border-color: var(--primary);
+    }
+    .btn-test {
+      width: 100%;
+      background: var(--success);
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: opacity 0.2s;
+    }
+    .btn-test:hover {
+      opacity: 0.9;
+    }
+    .result-box {
+      margin-top: 15px;
+      background: #090d16;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      display: none;
+      white-space: pre-wrap;
+    }
+    ol {
+      padding-left: 20px;
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.8;
+    }
+    li strong {
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="badge">
+        <span class="dot"></span>
+        ระบบพร้อมทำงาน (Webhook Active)
+      </div>
+      <h1>🥞 PanCake Webhook Service</h1>
+      <p class="subtitle">ระบบรับ Webhook จากแอพแชท PanCake CRM และบันทึกข้อมูลลีดลง Google Sheets</p>
+    </div>
+
+    <!-- Endpoint Card -->
+    <div class="card">
+      <div class="card-title">🔗 Webhook URL สำหรับใส่ใน PanCake</div>
+      <div class="endpoint-box">
+        <span class="endpoint-url" id="webhookUrl">กำลังโหลด URL...</span>
+        <button class="copy-btn" onclick="copyWebhook()">คัดลอก</button>
+      </div>
+      <p style="font-size: 13px; color: var(--text-muted);">
+        นำ URL ด้านบนไปวางในการตั้งค่า Webhook ใน PanCake ของทั้ง <strong>"เพจเคพี"</strong> และ <strong>"เพจเฮียตั้ม"</strong>
+      </p>
+
+      <div class="info-grid">
+        <div class="info-item">
+          <div class="info-label">ที่มาลูกค้า (Source)</div>
+          <div class="info-val">Facebook</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">ชีตปลายทาง (Target Sheet)</div>
+          <div class="info-val">Facebook KP (คอลัมน์ A-E)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Test Simulator Card -->
+    <div class="card">
+      <div class="card-title">🧪 ทดสอบยิง Webhook จำลอง (Test Simulator)</div>
+      <div class="form-group">
+        <label>ชื่อลูกค้า (NAME)</label>
+        <input type="text" id="testName" value="ประกายฟ้า สานนอก">
+      </div>
+      <div class="form-group">
+        <label>เบอร์โทรศัพท์ (PHONE)</label>
+        <input type="text" id="testPhone" value="099-731-6431">
+      </div>
+      <button class="btn-test" onclick="sendTestWebhook()">🚀 ส่งข้อมูลทดสอบเข้า Webhook</button>
+      <div class="result-box" id="testResult"></div>
+    </div>
+
+    <!-- Quick Guide -->
+    <div class="card">
+      <div class="card-title">📖 ขั้นตอนการตั้งค่าใน PanCake</div>
+      <ol>
+        <li>เข้าเว็บ <strong>PanCake</strong> (pancake.biz หรือ pancake.vn)</li>
+        <li>ไปที่ <strong>การตั้งค่า (Settings)</strong> > <strong>Webhook</strong></li>
+        <li>วาง URL ด้านบนลงในช่อง <strong>Webhook URL</strong></li>
+        <li>กดบันทึก (Save) ระบบจะเริ่มดักจับข้อมูลลีดทันที</li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    const fullUrl = window.location.origin + '/api/webhooks/pancake';
+    document.getElementById('webhookUrl').innerText = fullUrl;
+
+    function copyWebhook() {
+      navigator.clipboard.writeText(fullUrl).then(() => {
+        alert('คัดลอก Webhook URL เรียบร้อยแล้ว!');
+      });
+    }
+
+    async function sendTestWebhook() {
+      const name = document.getElementById('testName').value;
+      const phone = document.getElementById('testPhone').value;
+      const resultBox = document.getElementById('testResult');
+
+      const payload = {
+        fields: [
+          {
+            id: 'test_' + Date.now(),
+            NAME: name,
+            PHONE: [{ VALUE: phone, VALUE_TYPE: 'WORK' }]
+          }
+        ]
+      };
+
+      resultBox.style.display = 'block';
+      resultBox.innerText = 'กำลังส่งข้อมูล...';
+
+      try {
+        const res = await fetch('/api/webhooks/pancake', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        resultBox.innerText = JSON.stringify(data, null, 2);
+      } catch (err) {
+        resultBox.innerText = 'Error: ' + err.message;
+      }
+    }
+  </script>
+</body>
+</html>
