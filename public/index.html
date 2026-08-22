@@ -580,6 +580,9 @@
           <span class="dot"></span>
           ระบบกำลังดักจับเบอร์โทรลูกค้า
         </div>
+        <span id="saveIndicator" style="font-size: 11px; color: #34d399; opacity: 0.8; font-weight: 500;">
+          บันทึกข้อมูลถาวรแล้ว 💾
+        </span>
       </div>
 
       <div class="nav-actions">
@@ -592,13 +595,20 @@
         <button class="btn btn-add" onclick="openAddLeadModal()">
           + เพิ่มเคสเอง
         </button>
-        <button class="btn btn-excel" onclick="exportToCSV()">
+        <button class="btn btn-excel" onclick="backupJSON()" title="สำรองไฟล์ JSON">
+          💾 สำรองข้อมูล
+        </button>
+        <button class="btn btn-excel" onclick="restoreJSON()" title="กู้คืนไฟล์ JSON">
+          📂 นำเข้าข้อมูล
+        </button>
+        <button class="btn btn-excel" onclick="exportToCSV()" title="ดาวน์โหลดไฟล์ Excel/CSV">
           📥 Export Excel
         </button>
         <button class="btn btn-trash" onclick="clearAllLeads()" title="ล้างข้อมูลทั้งหมด">
           🗑️
         </button>
       </div>
+
     </header>
 
     <!-- METRICS (4 CARDS) -->
@@ -833,33 +843,113 @@
 
     const TRUCK_TYPES = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม'];
 
-    // State
+    // STATE & PERSISTENCE ENGINE (LocalStorage + IndexedDB)
+    const STORAGE_KEY = 'pancake_sales_leads_v3';
+    const SCANNED_KEY = 'pancake_scanned_count_v3';
+    const DB_NAME = 'PancakeCRM_DB';
+    const DB_STORE = 'leads_store';
+
     let leads = [];
     let scannedMessageCount = 0;
     let currentFilter = 'ทั้งหมด';
+    let db = null;
 
     let truckChartInstance = null;
     let salesChartInstance = null;
 
-    // Load from LocalStorage
-    function initData() {
-      const savedLeads = localStorage.getItem('pancake_sales_leads');
+    // 1. Initialize IndexedDB for permanent storage
+    function initIndexedDB() {
+      return new Promise((resolve) => {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = (e) => {
+          const database = e.target.result;
+          if (!database.objectStoreNames.contains(DB_STORE)) {
+            database.createObjectStore(DB_STORE, { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = (e) => {
+          db = e.target.result;
+          resolve(db);
+        };
+        req.onerror = () => {
+          resolve(null);
+        };
+      });
+    }
+
+    // 2. Load from both LocalStorage and IndexedDB
+    async function initData() {
+      await initIndexedDB();
+
+      let loaded = false;
+
+      // Try LocalStorage first
+      const savedLeads = localStorage.getItem(STORAGE_KEY);
       if (savedLeads) {
-        try { leads = JSON.parse(savedLeads); } catch(e) { leads = []; }
+        try {
+          const parsed = JSON.parse(savedLeads);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            leads = parsed;
+            loaded = true;
+          }
+        } catch(e) {}
       }
-      const savedScanned = localStorage.getItem('pancake_scanned_count');
+
+      // If LocalStorage was empty, try IndexedDB backup
+      if (!loaded && db) {
+        try {
+          const tx = db.transaction(DB_STORE, 'readonly');
+          const store = tx.objectStore(DB_STORE);
+          const req = store.get('all_leads');
+          req.onsuccess = () => {
+            if (req.result && Array.isArray(req.result.data)) {
+              leads = req.result.data;
+              saveState(); // Re-sync to LocalStorage
+              updateAll();
+            }
+          };
+        } catch(e) {}
+      }
+
+      const savedScanned = localStorage.getItem(SCANNED_KEY);
       if (savedScanned) {
         scannedMessageCount = parseInt(savedScanned, 10) || 0;
       }
 
       initCharts();
       updateAll();
+      showSaveIndicator('โหลดข้อมูลเรียบร้อย ✅');
     }
 
+    // 3. Save permanently to both LocalStorage and IndexedDB
     function saveState() {
-      localStorage.setItem('pancake_sales_leads', JSON.stringify(leads));
-      localStorage.setItem('pancake_scanned_count', scannedMessageCount);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(leads));
+        localStorage.setItem(SCANNED_KEY, scannedMessageCount);
+      } catch(e) {
+        console.error('LocalStorage save error:', e);
+      }
+
+      if (db) {
+        try {
+          const tx = db.transaction(DB_STORE, 'readwrite');
+          const store = tx.objectStore(DB_STORE);
+          store.put({ id: 'all_leads', data: leads, updatedAt: new Date().toISOString() });
+        } catch(e) {}
+      }
+
+      showSaveIndicator('บันทึกข้อมูลถาวรแล้ว 💾');
     }
+
+    function showSaveIndicator(text) {
+      const el = document.getElementById('saveIndicator');
+      if (el) {
+        el.innerText = `${text} (${new Date().toLocaleTimeString('th-TH')})`;
+        el.style.opacity = '1';
+        setTimeout(() => { el.style.opacity = '0.7'; }, 3000);
+      }
+    }
+
 
     // Helper: Normalize Thai Phone Number
     function extractThaiPhone(text) {
@@ -1086,8 +1176,54 @@
       });
     }
 
+    // Backup JSON
+    function backupJSON() {
+      if (leads.length === 0) {
+        Swal.fire('ไม่มีข้อมูล', 'ยังไม่มีข้อมูลเคสลูกค้าสำหรับสำรอง', 'info');
+        return;
+      }
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(leads, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `pancake_crm_backup_${new Date().toISOString().slice(0,10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      Swal.fire('สำรองข้อมูลเรียบร้อย', 'ดาวน์โหลดไฟล์สำรองเก็บไว้ในเครื่องเรียบร้อยแล้ว', 'success');
+    }
+
+    // Restore JSON
+    function restoreJSON() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const imported = JSON.parse(event.target.result);
+            if (Array.isArray(imported)) {
+              leads = imported;
+              saveState();
+              updateAll();
+              Swal.fire('กู้คืนสำเร็จ', `นำเข้าข้อมูลทั้งหมด ${leads.length} เคสเรียบร้อยแล้ว`, 'success');
+            } else {
+              Swal.fire('ไฟล์ไม่ถูกต้อง', 'โครงสร้างไฟล์ JSON ไม่ถูกต้อง', 'error');
+            }
+          } catch(err) {
+            Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถอ่านไฟล์ได้', 'error');
+          }
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    }
+
     // Export to Excel / CSV
     function exportToCSV() {
+
       if (leads.length === 0) {
         Swal.fire('ไม่มีข้อมูล', 'ยังไม่มีข้อมูลเคสลูกค้าสำหรับส่งออก', 'info');
         return;
