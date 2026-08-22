@@ -40,7 +40,27 @@ function detectTruckType(text) {
   return 'หัวลาก';
 }
 
+function resolveChannelSource(rawSource, querySource, payload) {
+  if (querySource && querySource.trim()) return querySource.trim();
+  
+  const pName = payload?.page_name || payload?.page?.name || payload?.data?.page_name || '';
+  const candidate = String(rawSource || pName || '').trim();
+
+  if (candidate.includes('เฮียตั้ม') || candidate.toLowerCase().includes('tum')) return 'FB เฮียตั้มรถติด';
+  if (candidate.includes('เคพี') || candidate.toLowerCase().includes('kp')) return 'FB เคพีศรีราชา';
+  if (candidate.toLowerCase().includes('tiktok')) return 'TikTok';
+  if (candidate.toLowerCase().includes('loa') || candidate.toLowerCase().includes('line')) return 'LOA เคพี';
+
+  // If candidate is a raw ID (like -1,1645218189058372)
+  if (!candidate || /^[-0-9,\s_]+$/.test(candidate)) {
+    return 'FB เคพีศรีราชา';
+  }
+
+  return candidate;
+}
+
 function getThaiDateTime() {
+
   const now = new Date();
   const optionsDate = { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', year: 'numeric' };
   const optionsTime = { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
@@ -283,11 +303,13 @@ module.exports = async (req, res) => {
       recordLead(item.id, validPhone);
 
       const truck = detectTruckType(item.phone + ' ' + (payload.message || ''));
+      const finalSource = resolveChannelSource(item.source, req.query?.source || req.query?.channel || req.query?.page, payload);
+
       const leadObj = {
         id: item.id || 'lead_' + Date.now(),
         date,
         time,
-        source: item.source || 'FB เคพีศรีราชา',
+        source: finalSource,
         name: customerName,
         phone: validPhone,
         truck: truck,
@@ -303,12 +325,13 @@ module.exports = async (req, res) => {
       rowsToAppend.push([
         date,
         time,
-        'Facebook',
+        finalSource,
         customerName,
         `'${validPhone}`,
         truck,
         '', '', '', '', '', '', ''
       ]);
+
     }
 
     // If Google Sheets is configured, also append to Sheets

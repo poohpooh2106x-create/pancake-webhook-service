@@ -1227,11 +1227,19 @@
       tbody.innerHTML = filtered.map((lead, idx) => {
         const realIdx = leads.indexOf(lead);
         const truckOptionsHtml = truckTypes.map(t => `<option value="${t}" ${lead.truck === t ? 'selected' : ''}>${t}</option>`).join('');
+        const CHANNELS = ['FB เคพีศรีราชา', 'FB เฮียตั้มรถติด', 'TikTok', 'LOA เคพี', 'อื่นๆ'];
+        const currentSource = sanitizeChannelName(lead.source);
+        const channelOptionsHtml = CHANNELS.map(c => `<option value="${c}" ${currentSource === c ? 'selected' : ''}>${c}</option>`).join('');
+
         return `
           <tr>
             <td>${lead.date}</td>
             <td style="color: #94a3b8;">${lead.time}</td>
-            <td><span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 11px;">${lead.source || 'Facebook'}</span></td>
+            <td>
+              <select class="select-sm" onchange="updateLeadSource(${realIdx}, this.value)" style="background: rgba(255,255,255,0.06); font-size: 11px;">
+                ${channelOptionsHtml}
+              </select>
+            </td>
             <td style="font-weight: 500;">${lead.name}</td>
             <td class="cell-phone">
               <a href="tel:${lead.phone}" style="color: inherit; text-decoration: none;" title="กดเพื่อโทร">${lead.phone}</a>
@@ -1259,6 +1267,26 @@
         `;
       }).join('');
     }
+
+    function sanitizeChannelName(source) {
+      if (!source) return 'FB เคพีศรีราชา';
+      const s = String(source).trim();
+      if (s.includes('เฮียตั้ม') || s.toLowerCase().includes('tum')) return 'FB เฮียตั้มรถติด';
+      if (s.includes('เคพี') || s.toLowerCase().includes('kp')) return 'FB เคพีศรีราชา';
+      if (s.toLowerCase().includes('tiktok')) return 'TikTok';
+      if (s.toLowerCase().includes('loa') || s.toLowerCase().includes('line')) return 'LOA เคพี';
+      if (/^[-0-9,\s_]+$/.test(s)) return 'FB เคพีศรีราชา';
+      return s;
+    }
+
+    function updateLeadSource(idx, val) {
+      if (leads[idx]) {
+        leads[idx].source = val;
+        saveState();
+        renderTable();
+      }
+    }
+
 
 
     function updateLeadTruck(idx, val) {
