@@ -3,20 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PanCake Webhook Service - Lead Automation</title>
+  <title>Pancake Sales CRM - บันทึกเบอร์โทร & จ่ายงานให้เซลล์</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- SweetAlert2 for beautiful popups -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <style>
     :root {
-      --primary: #2563eb;
-      --primary-dark: #1d4ed8;
-      --success: #16a34a;
-      --bg: #0f172a;
-      --card-bg: #1e293b;
-      --border: #334155;
+      --bg-dark: #090e17;
+      --bg-card: #111827;
+      --bg-card-alt: #162032;
+      --border: #1f293d;
+      --border-light: #334155;
       --text: #f8fafc;
       --text-muted: #94a3b8;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --orange: #f97316;
+      --purple: #8b5cf6;
+      --cyan: #06b6d4;
     }
     * {
       box-sizing: border-box;
@@ -25,284 +36,1293 @@
       font-family: 'Prompt', sans-serif;
     }
     body {
-      background-color: var(--bg);
+      background-color: var(--bg-dark);
       color: var(--text);
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 30px 20px;
+      padding: 20px;
     }
     .container {
-      max-width: 760px;
-      width: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
     }
-    .header {
-      text-align: center;
-      margin-bottom: 30px;
-    }
-    .badge {
-      display: inline-flex;
+
+    /* TOP NAVBAR */
+    .top-nav {
+      display: flex;
       align-items: center;
-      gap: 6px;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .brand-icon {
+      width: 44px;
+      height: 44px;
+      background: #ea580c;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 4px 12px rgba(234, 88, 12, 0.4);
+    }
+    .brand-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #ffffff;
+      line-height: 1.2;
+    }
+    .brand-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .badge-extractor {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      display: inline-block;
+    }
+    .badge-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(6, 182, 212, 0.1);
+      border: 1px solid rgba(6, 182, 212, 0.25);
       padding: 6px 14px;
       border-radius: 9999px;
-      background: rgba(22, 163, 74, 0.15);
-      color: #4ade80;
-      border: 1px solid rgba(74, 222, 128, 0.3);
-      font-size: 13px;
+      font-size: 12px;
+      color: #38bdf8;
       font-weight: 500;
-      margin-bottom: 15px;
     }
-    .badge .dot {
+    .badge-status .dot {
       width: 8px;
       height: 8px;
+      background: #10b981;
       border-radius: 50%;
-      background: #4ade80;
-      box-shadow: 0 0 10px #4ade80;
+      box-shadow: 0 0 8px #10b981;
     }
-    h1 {
-      font-size: 26px;
-      font-weight: 600;
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+    .btn-webhook {
+      background: #1e293b;
+      border: 1px solid var(--border-light);
+      color: #cbd5e1;
+      font-family: monospace;
+    }
+    .btn-webhook:hover {
+      background: #334155;
+      color: white;
+    }
+    .btn-sim {
+      background: #312e81;
+      color: #c7d2fe;
+      border: 1px solid #4338ca;
+    }
+    .btn-sim:hover {
+      background: #3730a3;
+      color: white;
+    }
+    .btn-add {
+      background: #0891b2;
+      color: white;
+    }
+    .btn-add:hover {
+      background: #0e7490;
+    }
+    .btn-excel {
+      background: #1e293b;
+      border: 1px solid var(--border-light);
+      color: #94a3b8;
+    }
+    .btn-excel:hover {
+      background: #334155;
+      color: white;
+    }
+    .btn-trash {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+      padding: 8px 10px;
+    }
+    .btn-trash:hover {
+      background: #ef4444;
+      color: white;
+    }
+
+    /* METRICS SECTION (4 CARDS) */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .metric-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      position: relative;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .metric-card:hover {
+      border-color: var(--border-light);
+      transform: translateY(-2px);
+    }
+    .metric-info h4 {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
       margin-bottom: 8px;
     }
-    p.subtitle {
-      color: var(--text-muted);
-      font-size: 14px;
+    .metric-num {
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 10px;
     }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 24px;
+    .metric-sub {
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .metric-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    .card-leads .metric-num { color: #34d399; }
+    .card-leads .metric-sub { color: #10b981; }
+    .card-leads .metric-icon { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+
+    .card-assigned .metric-num { color: #60a5fa; }
+    .card-assigned .metric-sub { color: #3b82f6; }
+    .card-assigned .metric-icon { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+
+    .card-pending .metric-num { color: #fbbf24; }
+    .card-pending .metric-sub { color: #f59e0b; }
+    .card-pending .metric-icon { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+
+    .card-scanned .metric-num { color: #c084fc; }
+    .card-scanned .metric-sub { color: #a855f7; }
+    .card-scanned .metric-icon { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
+
+    /* MIDDLE SECTION (3 CHARTS/CARDS) */
+    .middle-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1fr;
+      gap: 16px;
       margin-bottom: 24px;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
     }
-    .card-title {
-      font-size: 16px;
+    @media (max-width: 1024px) {
+      .middle-grid { grid-template-columns: 1fr; }
+    }
+    .chart-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+    }
+    .chart-title {
+      font-size: 14px;
       font-weight: 600;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .chart-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+    .chart-container {
+      position: relative;
+      flex: 1;
+      min-height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* SALES TEAM LIST */
+    .sales-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .sales-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sales-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: white;
+    }
+    .sales-count {
+      font-size: 13px;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+
+    /* Sales Colors */
+    .badge-wuth { background: #0284c7; }
+    .badge-lin { background: #b45309; }
+    .badge-top { background: #334155; border: 1px solid #475569; }
+    .badge-jib { background: #059669; }
+    .badge-ked { background: #d97706; }
+    .badge-ma { background: #7c3aed; }
+    .badge-pook { background: #dc2626; }
+    .badge-fern { background: #0d9488; }
+
+    /* TABLE SECTION */
+    .table-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+    .table-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
       margin-bottom: 16px;
+    }
+    .table-title {
+      font-size: 15px;
+      font-weight: 600;
       display: flex;
       align-items: center;
       gap: 8px;
     }
-    .endpoint-box {
-      background: #090d16;
+    .filter-tabs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px 16px;
+      color: var(--text-muted);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: white;
+    }
+    .tab-btn.active {
+      background: #ea580c;
+      border-color: #ea580c;
+      color: white;
+      font-weight: 600;
+    }
+    .table-search-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .search-input {
+      background: #090e17;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: white;
+      font-size: 13px;
+      outline: none;
+      width: 240px;
+    }
+    .search-input:focus {
+      border-color: var(--primary);
+    }
+    .btn-refresh {
+      background: #090e17;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .btn-refresh:hover {
+      color: white;
+      border-color: var(--border-light);
+    }
+
+    /* TABLE */
+    .table-wrapper {
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 13px;
+    }
+    th {
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--text-muted);
+      font-weight: 500;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .cell-phone {
+      font-family: monospace;
+      font-weight: 600;
+      color: #38bdf8;
+    }
+    .select-sm {
+      background: #090e17;
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      color: #f1f5f9;
+      padding: 6px 10px;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+    }
+    .select-sm:focus {
+      border-color: var(--primary);
+    }
+    .btn-line-send {
+      background: #059669;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.2s;
+    }
+    .btn-line-send:hover {
+      background: #047857;
+    }
+    .btn-del-row {
+      background: transparent;
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+    }
+    .btn-del-row:hover {
+      color: #ef4444;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+
+    /* MODAL */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      padding: 20px;
+    }
+    .modal-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: 16px;
+      max-width: 500px;
+      width: 100%;
+      padding: 24px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    .modal-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 12px;
+      margin-bottom: 16px;
     }
-    .endpoint-url {
-      font-family: monospace;
-      font-size: 14px;
-      color: #38bdf8;
-      word-break: break-all;
+    .modal-title {
+      font-size: 16px;
+      font-weight: 600;
     }
-    .copy-btn {
-      background: var(--primary);
-      color: white;
+    .btn-close {
+      background: none;
       border: none;
-      padding: 8px 16px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      white-space: nowrap;
-      transition: background 0.2s;
-    }
-    .copy-btn:hover {
-      background: var(--primary-dark);
-    }
-    .info-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 15px;
-    }
-    .info-item {
-      background: rgba(255, 255, 255, 0.03);
-      padding: 12px;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-    }
-    .info-label {
-      font-size: 12px;
       color: var(--text-muted);
+      font-size: 20px;
+      cursor: pointer;
     }
-    .info-val {
-      font-size: 14px;
-      font-weight: 500;
-      margin-top: 2px;
-    }
-    /* Form test */
     .form-group {
-      margin-bottom: 12px;
+      margin-bottom: 14px;
     }
-    label {
+    .form-label {
       display: block;
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text-muted);
       margin-bottom: 4px;
     }
-    input {
+    .form-input, .form-select {
       width: 100%;
-      background: #090d16;
-      border: 1px solid var(--border);
+      background: #090e17;
+      border: 1px solid var(--border-light);
       border-radius: 8px;
-      padding: 10px 14px;
+      padding: 10px 12px;
       color: white;
-      font-size: 14px;
+      font-size: 13px;
       outline: none;
     }
-    input:focus {
+    .form-input:focus, .form-select:focus {
       border-color: var(--primary);
     }
-    .btn-test {
-      width: 100%;
-      background: var(--success);
-      color: white;
-      border: none;
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      margin-top: 8px;
-      transition: opacity 0.2s;
+    .quick-tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 6px;
     }
-    .btn-test:hover {
-      opacity: 0.9;
-    }
-    .result-box {
-      margin-top: 15px;
-      background: #090d16;
+    .tag-chip {
+      background: rgba(255, 255, 255, 0.05);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px;
-      font-family: monospace;
-      font-size: 12px;
-      max-height: 200px;
-      overflow-y: auto;
-      display: none;
-      white-space: pre-wrap;
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 11px;
+      color: #94a3b8;
+      cursor: pointer;
     }
-    ol {
-      padding-left: 20px;
-      color: var(--text-muted);
-      font-size: 14px;
-      line-height: 1.8;
-    }
-    li strong {
-      color: var(--text);
+    .tag-chip:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
     }
   </style>
 </head>
 <body>
+
   <div class="container">
-    <div class="header">
-      <div class="badge">
-        <span class="dot"></span>
-        ระบบพร้อมทำงาน (Webhook Active)
-      </div>
-      <h1>🥞 PanCake Webhook Service</h1>
-      <p class="subtitle">ระบบรับ Webhook จากแอพแชท PanCake CRM และบันทึกข้อมูลลีดลง Google Sheets</p>
-    </div>
-
-    <!-- Endpoint Card -->
-    <div class="card">
-      <div class="card-title">🔗 Webhook URL สำหรับใส่ใน PanCake</div>
-      <div class="endpoint-box">
-        <span class="endpoint-url" id="webhookUrl">กำลังโหลด URL...</span>
-        <button class="copy-btn" onclick="copyWebhook()">คัดลอก</button>
-      </div>
-      <p style="font-size: 13px; color: var(--text-muted);">
-        นำ URL ด้านบนไปวางในการตั้งค่า Webhook ใน PanCake ของทั้ง <strong>"เพจเคพี"</strong> และ <strong>"เพจเฮียตั้ม"</strong>
-      </p>
-
-      <div class="info-grid">
-        <div class="info-item">
-          <div class="info-label">ที่มาลูกค้า (Source)</div>
-          <div class="info-val">Facebook</div>
+    <!-- TOP NAV -->
+    <header class="top-nav">
+      <div class="brand-section">
+        <div class="brand-icon">🚚</div>
+        <div>
+          <div class="brand-title">Pancake Sales CRM</div>
+          <div class="brand-sub">บันทึกเฉพาะลูกค้าที่ให้เบอร์โทร & จ่ายงานให้เซลล์</div>
         </div>
-        <div class="info-item">
-          <div class="info-label">ชีตปลายทาง (Target Sheet)</div>
-          <div class="info-val">Facebook KP (คอลัมน์ A-E)</div>
+        <span class="badge-extractor">Auto Phone Extractor</span>
+        <div class="badge-status">
+          <span class="dot"></span>
+          ระบบกำลังดักจับเบอร์โทรลูกค้า
         </div>
       </div>
-    </div>
 
-    <!-- Test Simulator Card -->
-    <div class="card">
-      <div class="card-title">🧪 ทดสอบยิง Webhook จำลอง (Test Simulator)</div>
-      <div class="form-group">
-        <label>ชื่อลูกค้า (NAME)</label>
-        <input type="text" id="testName" value="ประกายฟ้า สานนอก">
+      <div class="nav-actions">
+        <button class="btn btn-webhook" onclick="copyWebhookUrl()">
+          🔗 /api/webhooks/pancake 📋
+        </button>
+        <button class="btn btn-sim" onclick="openSimulatorModal()">
+          ▷ จำลองแชทลูกค้า (Simulator)
+        </button>
+        <button class="btn btn-add" onclick="openAddLeadModal()">
+          + เพิ่มเคสเอง
+        </button>
+        <button class="btn btn-excel" onclick="exportToCSV()">
+          📥 Export Excel
+        </button>
+        <button class="btn btn-trash" onclick="clearAllLeads()" title="ล้างข้อมูลทั้งหมด">
+          🗑️
+        </button>
       </div>
-      <div class="form-group">
-        <label>เบอร์โทรศัพท์ (PHONE)</label>
-        <input type="text" id="testPhone" value="099-731-6431">
-      </div>
-      <button class="btn-test" onclick="sendTestWebhook()">🚀 ส่งข้อมูลทดสอบเข้า Webhook</button>
-      <div class="result-box" id="testResult"></div>
-    </div>
+    </header>
 
-    <!-- Quick Guide -->
-    <div class="card">
-      <div class="card-title">📖 ขั้นตอนการตั้งค่าใน PanCake</div>
-      <ol>
-        <li>เข้าเว็บ <strong>PanCake</strong> (pancake.biz หรือ pancake.vn)</li>
-        <li>ไปที่ <strong>การตั้งค่า (Settings)</strong> > <strong>Webhook</strong></li>
-        <li>วาง URL ด้านบนลงในช่อง <strong>Webhook URL</strong></li>
-        <li>กดบันทึก (Save) ระบบจะเริ่มดักจับข้อมูลลีดทันที</li>
-      </ol>
+    <!-- METRICS (4 CARDS) -->
+    <section class="metrics-grid">
+      <div class="metric-card card-leads">
+        <div class="metric-info">
+          <h4>ลูกค้าที่ได้เบอร์โทรแล้ว (Leads)</h4>
+          <div class="metric-num" id="statLeadsCount">0</div>
+          <div class="metric-sub">✓ ตรวจสอบเบอร์แล้ว นับเฉพาะคนที่ให้เบอร์</div>
+        </div>
+        <div class="metric-icon">📞</div>
+      </div>
+
+      <div class="metric-card card-assigned">
+        <div class="metric-info">
+          <h4>เคสที่จ่ายงานให้เซลล์แล้ว</h4>
+          <div class="metric-num" id="statAssignedCount">0</div>
+          <div class="metric-sub">8 เซลล์ในทีม พร้อมส่งใน LINE</div>
+        </div>
+        <div class="metric-icon">👤</div>
+      </div>
+
+      <div class="metric-card card-pending">
+        <div class="metric-info">
+          <h4>เคสรอเลือกเซลล์</h4>
+          <div class="metric-num" id="statPendingCount">0</div>
+          <div class="metric-sub">Action required แอดมินเลือกเซลล์รับเคส</div>
+        </div>
+        <div class="metric-icon">⏰</div>
+      </div>
+
+      <div class="metric-card card-scanned">
+        <div class="metric-info">
+          <h4>ข้อความที่สแกนหาเบอร์</h4>
+          <div class="metric-num" id="statScannedCount">0</div>
+          <div class="metric-sub">AI & Regex สแกนตรวจจับอัตโนมัติ</div>
+        </div>
+        <div class="metric-icon">💬</div>
+      </div>
+    </section>
+
+    <!-- MIDDLE SECTION (3 CHARTS/CARDS) -->
+    <section class="middle-grid">
+      <!-- 1. Donut Chart: รถที่สนใจ -->
+      <div class="chart-card">
+        <div class="chart-title">
+          <span>🚚 สัดส่วนรถที่ลูกค้าสนใจ (มีเบอร์โทร)</span>
+          <span class="chart-sub">หัวลาก/ตู้10/หาง/ดั๊ม</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="truckChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 2. Bar Chart: การกระจายเคสให้เซลล์ -->
+      <div class="chart-card">
+        <div class="chart-title">
+          <span>👥 การกระจายเคสให้เซลล์ (8 คน)</span>
+          <span class="chart-sub">จำนวนเคสต่อคน</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="salesChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 3. Sales Reps Badges & Count -->
+      <div class="chart-card">
+        <div class="chart-title">
+          <span>🛡️ ทีมเซลล์ที่รับผิดชอบ (8 คน)</span>
+        </div>
+        <div class="sales-grid" id="salesTeamList">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- TABLE SECTION -->
+    <section class="table-card">
+      <div class="table-header">
+        <div class="table-title">
+          📊 ตารางรับเคสลูกค้า (เฉพาะคนที่มีเบอร์โทร)
+        </div>
+
+        <div class="filter-tabs">
+          <button class="tab-btn active" onclick="setChannelFilter('ทั้งหมด', this)">ทั้งหมด</button>
+          <button class="tab-btn" onclick="setChannelFilter('FB เคพีศรีราชา', this)">FB เคพีศรีราชา</button>
+          <button class="tab-btn" onclick="setChannelFilter('TikTok', this)">TikTok</button>
+          <button class="tab-btn" onclick="setChannelFilter('LOA เคพี', this)">LOA เคพี</button>
+          <button class="tab-btn" onclick="setChannelFilter('FB เฮียตั้มรถติด', this)">FB เฮียตั้มรถติด</button>
+        </div>
+
+        <div class="table-search-box">
+          <input type="text" class="search-input" id="tableSearch" placeholder="🔍 ค้นหาชื่อ, เบอร์โทร, รถ..." oninput="renderTable()">
+          <button class="btn-refresh" onclick="refreshLeads()" title="รีเฟรชข้อมูล">🔄</button>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>วันที่รับ</th>
+              <th>เวลา</th>
+              <th>ที่มา</th>
+              <th>ชื่อลูกค้า</th>
+              <th>เบอร์โทร</th>
+              <th>รถที่สนใจ</th>
+              <th>เซลล์ที่รับ</th>
+              <th style="text-align: center;">ส่งต่อ / จัดการ</th>
+            </tr>
+          </thead>
+          <tbody id="leadsTableBody">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- SIMULATOR MODAL -->
+  <div class="modal-overlay" id="simModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title">▷ จำลองแชทลูกค้า (Webhook Simulator)</div>
+        <button class="btn-close" onclick="closeModal('simModal')">&times;</button>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">ช่องทางที่ทักเข้ามา (Channel / Page)</label>
+        <select class="form-select" id="simSource">
+          <option value="FB เคพีศรีราชา">FB เคพีศรีราชา</option>
+          <option value="FB เฮียตั้มรถติด">FB เฮียตั้มรถติด</option>
+          <option value="TikTok">TikTok</option>
+          <option value="LOA เคพี">LOA เคพี</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">ชื่อโปรไฟล์ลูกค้า (Customer Name)</label>
+        <input type="text" class="form-input" id="simName" value="ประกายฟ้า สานนอก">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">ข้อความแชทจากลูกค้า (มีเบอร์โทร + รถที่สนใจ)</label>
+        <input type="text" class="form-input" id="simMessage" value="สนใจหัวลากครับ เบอร์ 099-731-6431 โทรมาได้เลย">
+        <div class="quick-tags">
+          <span class="tag-chip" onclick="setSimMsg('สนใจหัวลากครับ เบอร์ 099-731-6431')">หัวลาก (099-731-6431)</span>
+          <span class="tag-chip" onclick="setSimMsg('ขอดูตู้ 10 บาน เบอร์ 081-234-5678')">ตู้ 10 บาน (081-234-5678)</span>
+          <span class="tag-chip" onclick="setSimMsg('หางก้างปลา เบอร์ 062-987-6543')">หางก้างปลา (062-987-6543)</span>
+          <span class="tag-chip" onclick="setSimMsg('ดั๊มพ์ 10 ล้อ เบอร์ 089-555-4321')">ดั๊มพ์ (089-555-4321)</span>
+        </div>
+      </div>
+
+      <button class="btn btn-add" style="width: 100%; justify-content: center; padding: 12px; margin-top: 10px;" onclick="runSimulation()">
+        🚀 ยิง Webhook จำลองเข้าสู่ระบบ
+      </button>
+    </div>
+  </div>
+
+  <!-- ADD MANUAL LEAD MODAL -->
+  <div class="modal-overlay" id="addModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title">+ เพิ่มเคสลูกค้าใหม่ (กรอกเอง)</div>
+        <button class="btn-close" onclick="closeModal('addModal')">&times;</button>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">ที่มา (Channel)</label>
+        <select class="form-select" id="addSource">
+          <option value="FB เคพีศรีราชา">FB เคพีศรีราชา</option>
+          <option value="FB เฮียตั้มรถติด">FB เฮียตั้มรถติด</option>
+          <option value="TikTok">TikTok</option>
+          <option value="LOA เคพี">LOA เคพี</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">ชื่อลูกค้า</label>
+        <input type="text" class="form-input" id="addName" placeholder="เช่น คุณสมชาย ใจดี">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">เบอร์โทรศัพท์ (10 หลัก)</label>
+        <input type="text" class="form-input" id="addPhone" placeholder="เช่น 0812345678">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">รถที่สนใจ</label>
+        <select class="form-select" id="addTruck">
+          <option value="หัวลาก">หัวลาก</option>
+          <option value="ตู้10">ตู้10</option>
+          <option value="หาง">หาง</option>
+          <option value="ดั๊ม">ดั๊ม</option>
+          <option value="อื่นๆ">อื่นๆ</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">เลือกเซลล์ที่รับผิดชอบ</label>
+        <select class="form-select" id="addSales">
+          <option value="">-- รอเลือกเซลล์ --</option>
+          <option value="วุธ">วุธ</option>
+          <option value="ลิ้น">ลิ้น</option>
+          <option value="ท็อป">ท็อป</option>
+          <option value="จิ๊บ">จิ๊บ</option>
+          <option value="เกด">เกด</option>
+          <option value="ม่า">ม่า</option>
+          <option value="ปุ๊ก">ปุ๊ก</option>
+          <option value="เฟิร์น">เฟิร์น</option>
+        </select>
+      </div>
+
+      <button class="btn btn-add" style="width: 100%; justify-content: center; padding: 12px; margin-top: 10px;" onclick="saveManualLead()">
+        💾 บันทึกเคสลูกค้า
+      </button>
     </div>
   </div>
 
   <script>
-    const fullUrl = window.location.origin + '/api/webhooks/pancake';
-    document.getElementById('webhookUrl').innerText = fullUrl;
+    // 8 Sales Team Members
+    const SALES_TEAM = [
+      { name: 'วุธ', badgeClass: 'badge-wuth' },
+      { name: 'ลิ้น', badgeClass: 'badge-lin' },
+      { name: 'ท็อป', badgeClass: 'badge-top' },
+      { name: 'จิ๊บ', badgeClass: 'badge-jib' },
+      { name: 'เกด', badgeClass: 'badge-ked' },
+      { name: 'ม่า', badgeClass: 'badge-ma' },
+      { name: 'ปุ๊ก', badgeClass: 'badge-pook' },
+      { name: 'เฟิร์น', badgeClass: 'badge-fern' }
+    ];
 
-    function copyWebhook() {
-      navigator.clipboard.writeText(fullUrl).then(() => {
-        alert('คัดลอก Webhook URL เรียบร้อยแล้ว!');
+    const TRUCK_TYPES = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม'];
+
+    // State
+    let leads = [];
+    let scannedMessageCount = 0;
+    let currentFilter = 'ทั้งหมด';
+
+    let truckChartInstance = null;
+    let salesChartInstance = null;
+
+    // Load from LocalStorage
+    function initData() {
+      const savedLeads = localStorage.getItem('pancake_sales_leads');
+      if (savedLeads) {
+        try { leads = JSON.parse(savedLeads); } catch(e) { leads = []; }
+      }
+      const savedScanned = localStorage.getItem('pancake_scanned_count');
+      if (savedScanned) {
+        scannedMessageCount = parseInt(savedScanned, 10) || 0;
+      }
+
+      initCharts();
+      updateAll();
+    }
+
+    function saveState() {
+      localStorage.setItem('pancake_sales_leads', JSON.stringify(leads));
+      localStorage.setItem('pancake_scanned_count', scannedMessageCount);
+    }
+
+    // Helper: Normalize Thai Phone Number
+    function extractThaiPhone(text) {
+      if (!text) return null;
+      // Convert Thai digits
+      const thaiMap = {'๐':'0','๑':'1','๒':'2','๓':'3','๔':'4','๕':'5','๖':'6','๗':'7','๘':'8','๙':'9'};
+      const norm = String(text).replace(/[๐-๙]/g, c => thaiMap[c] || c);
+      const cleaned = norm.replace(/[\s\-\.\(\)\/]/g, '');
+
+      let phone = cleaned;
+      if (phone.startsWith('+66')) phone = '0' + phone.slice(3);
+      else if (phone.startsWith('66') && phone.length >= 11) phone = '0' + phone.slice(2);
+
+      const m = phone.match(/0[689]\d{8}/) || phone.match(/0[2-57]\d{7,8}/);
+      return m ? m[0] : null;
+    }
+
+    // Helper: Detect truck type from message text
+    function detectTruckType(text) {
+      if (!text) return 'หัวลาก';
+      const t = text.toLowerCase();
+      if (t.includes('ตู้') || t.includes('10 บาน')) return 'ตู้10';
+      if (t.includes('หาง') || t.includes('ก้างปลา') || t.includes('เทรลเลอร์')) return 'หาง';
+      if (t.includes('ดั๊ม') || t.includes('ดัมพ์') || t.includes('ดั้มพ์')) return 'ดั๊ม';
+      return 'หัวลาก';
+    }
+
+    // Date & Time Thai
+    function getNowThai() {
+      const now = new Date();
+      const date = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', year: 'numeric' }).format(now);
+      const time = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(now);
+      return { date, time };
+    }
+
+    // Render Metrics & UI
+    function updateAll() {
+      renderMetrics();
+      renderSalesList();
+      renderTable();
+      updateCharts();
+    }
+
+    function renderMetrics() {
+      const totalLeads = leads.length;
+      const assigned = leads.filter(l => l.sales && l.sales !== '').length;
+      const pending = totalLeads - assigned;
+
+      document.getElementById('statLeadsCount').innerText = totalLeads;
+      document.getElementById('statAssignedCount').innerText = assigned;
+      document.getElementById('statPendingCount').innerText = pending;
+      document.getElementById('statScannedCount').innerText = scannedMessageCount;
+    }
+
+    function renderSalesList() {
+      const container = document.getElementById('salesTeamList');
+      container.innerHTML = '';
+
+      SALES_TEAM.forEach(s => {
+        const count = leads.filter(l => l.sales === s.name).length;
+        const div = document.createElement('div');
+        div.className = 'sales-item';
+        div.innerHTML = `
+          <span class="sales-badge ${s.badgeClass}">${s.name}</span>
+          <span class="sales-count">${count}</span>
+        `;
+        container.appendChild(div);
       });
     }
 
-    async function sendTestWebhook() {
-      const name = document.getElementById('testName').value;
-      const phone = document.getElementById('testPhone').value;
-      const resultBox = document.getElementById('testResult');
+    function setChannelFilter(channel, btn) {
+      currentFilter = channel;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderTable();
+    }
 
-      const payload = {
-        fields: [
-          {
-            id: 'test_' + Date.now(),
-            NAME: name,
-            PHONE: [{ VALUE: phone, VALUE_TYPE: 'WORK' }]
-          }
-        ]
-      };
+    function renderTable() {
+      const tbody = document.getElementById('leadsTableBody');
+      const query = document.getElementById('tableSearch').value.toLowerCase().trim();
 
-      resultBox.style.display = 'block';
-      resultBox.innerText = 'กำลังส่งข้อมูล...';
+      let filtered = leads;
+      if (currentFilter !== 'ทั้งหมด') {
+        filtered = filtered.filter(l => l.source === currentFilter);
+      }
+      if (query) {
+        filtered = filtered.filter(l => 
+          (l.name && l.name.toLowerCase().includes(query)) ||
+          (l.phone && l.phone.includes(query)) ||
+          (l.truck && l.truck.toLowerCase().includes(query)) ||
+          (l.sales && l.sales.toLowerCase().includes(query))
+        );
+      }
 
-      try {
-        const res = await fetch('/api/webhooks/pancake', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        resultBox.innerText = JSON.stringify(data, null, 2);
-      } catch (err) {
-        resultBox.innerText = 'Error: ' + err.message;
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="8" class="empty-state">
+              📭 ยังไม่มีข้อมูลเคสลูกค้าที่ตรงกับเงื่อนไข<br>
+              <span style="font-size: 11px;">(ลองกดยิง 'จำลองแชทลูกค้า (Simulator)' หรือกด '+ เพิ่มเคสเอง' ได้เลยครับ)</span>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((lead, idx) => {
+        const realIdx = leads.indexOf(lead);
+        return `
+          <tr>
+            <td>${lead.date}</td>
+            <td style="color: #94a3b8;">${lead.time}</td>
+            <td><span style="background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 4px; font-size: 11px;">${lead.source || 'Facebook'}</span></td>
+            <td style="font-weight: 500;">${lead.name}</td>
+            <td class="cell-phone">
+              <a href="tel:${lead.phone}" style="color: inherit; text-decoration: none;" title="กดเพื่อโทร">${lead.phone}</a>
+            </td>
+            <td>
+              <select class="select-sm" onchange="updateLeadTruck(${realIdx}, this.value)">
+                <option value="หัวลาก" ${lead.truck === 'หัวลาก' ? 'selected' : ''}>หัวลาก</option>
+                <option value="ตู้10" ${lead.truck === 'ตู้10' ? 'selected' : ''}>ตู้10</option>
+                <option value="หาง" ${lead.truck === 'หาง' ? 'selected' : ''}>หาง</option>
+                <option value="ดั๊ม" ${lead.truck === 'ดั๊ม' ? 'selected' : ''}>ดั๊ม</option>
+                <option value="อื่นๆ" ${lead.truck === 'อื่นๆ' ? 'selected' : ''}>อื่นๆ</option>
+              </select>
+            </td>
+            <td>
+              <select class="select-sm" style="${lead.sales ? 'border-color: #10b981; color: #34d399;' : 'border-color: #f59e0b; color: #fbbf24;'}" onchange="updateLeadSales(${realIdx}, this.value)">
+                <option value="">-- เลือกเซลล์ --</option>
+                ${SALES_TEAM.map(s => `<option value="${s.name}" ${lead.sales === s.name ? 'selected' : ''}>${s.name}</option>`).join('')}
+              </select>
+            </td>
+            <td style="text-align: center;">
+              <button class="btn-line-send" onclick="sendToLine(${realIdx})" title="ส่งข้อมูลให้เซลล์ทาง LINE">
+                🟢 ส่ง LINE
+              </button>
+              <button class="btn-del-row" onclick="deleteLead(${realIdx})" title="ลบเคสนี้">
+                🗑️
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function updateLeadTruck(idx, val) {
+      if (leads[idx]) {
+        leads[idx].truck = val;
+        saveState();
+        updateCharts();
       }
     }
+
+    function updateLeadSales(idx, val) {
+      if (leads[idx]) {
+        leads[idx].sales = val;
+        saveState();
+        renderMetrics();
+        renderSalesList();
+        updateCharts();
+        renderTable();
+      }
+    }
+
+    function deleteLead(idx) {
+      if (confirm('ต้องการลบเคสนี้ใช่หรือไม่?')) {
+        leads.splice(idx, 1);
+        saveState();
+        updateAll();
+      }
+    }
+
+    function clearAllLeads() {
+      Swal.fire({
+        title: 'ล้างข้อมูลทั้งหมด?',
+        text: 'ต้องการล้างรายการเคสลูกค้าทั้งหมดในระบบใช่หรือไม่',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'ใช่, ล้างข้อมูล',
+        cancelButtonText: 'ยกเลิก'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          leads = [];
+          scannedMessageCount = 0;
+          saveState();
+          updateAll();
+          Swal.fire('เรียบร้อย', 'ล้างข้อมูลทั้งหมดเรียบร้อยแล้ว', 'success');
+        }
+      });
+    }
+
+    // LINE Notification Generator
+    function sendToLine(idx) {
+      const l = leads[idx];
+      if (!l) return;
+
+      const salesText = l.sales ? `เซลล์ที่รับเคส: คุณ${l.sales}` : 'เซลล์ที่รับเคส: (ยังไม่ระบุเซลล์)';
+      const msg = `📢 *เคสลูกค้าใหม่จาก PanCake*\n` +
+                  `━━━━━━━━━━━━━━━━━━\n` +
+                  `🏢 ที่มา: ${l.source}\n` +
+                  `👤 ชื่อลูกค้า: ${l.name}\n` +
+                  `📞 เบอร์โทร: ${l.phone}\n` +
+                  `🚚 รถที่สนใจ: ${l.truck || 'หัวลาก'}\n` +
+                  `⏰ เวลาที่ติดต่อ: ${l.date} (${l.time})\n` +
+                  `🛡️ ${salesText}\n` +
+                  `━━━━━━━━━━━━━━━━━━\n` +
+                  `กรุณาติดต่อลูกค้าทันทีครับ 🚀`;
+
+      navigator.clipboard.writeText(msg).then(() => {
+        Swal.fire({
+          title: 'คัดลอกข้อความ LINE แล้ว!',
+          html: `<div style="text-align: left; background: #0f172a; padding: 12px; border-radius: 8px; font-size: 13px; white-space: pre-wrap; font-family: monospace; color: #38bdf8;">${msg}</div>`,
+          icon: 'success',
+          confirmButtonText: 'เปิดแอพ LINE เพื่อส่ง',
+          showCancelButton: true,
+          cancelButtonText: 'ปิด'
+        }).then((res) => {
+          if (res.isConfirmed) {
+            window.open('https://line.me/R/', '_blank');
+          }
+        });
+      });
+    }
+
+    // Export to Excel / CSV
+    function exportToCSV() {
+      if (leads.length === 0) {
+        Swal.fire('ไม่มีข้อมูล', 'ยังไม่มีข้อมูลเคสลูกค้าสำหรับส่งออก', 'info');
+        return;
+      }
+
+      let csv = '\uFEFFวันที่รับ,เวลา,ที่มา,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,เซลล์ที่รับ\n';
+      leads.forEach(l => {
+        csv += `"${l.date}","${l.time}","${l.source}","${l.name}","\t${l.phone}","${l.truck}","${l.sales}"\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `pancake_leads_${new Date().toISOString().slice(0,10)}.csv`;
+      link.click();
+    }
+
+    // Copy Webhook URL
+    function copyWebhookUrl() {
+      const url = window.location.origin + '/api/webhooks/pancake';
+      navigator.clipboard.writeText(url).then(() => {
+        Swal.fire({
+          title: 'คัดลอก Webhook URL แล้ว!',
+          html: `<p style="font-size: 13px; color: #94a3b8;">นำ URL ด้านล่างไปใส่ใน <strong>PanCake Settings > Webhook</strong>:</p><br><code style="color: #38bdf8; background: #0f172a; padding: 8px 12px; border-radius: 6px;">${url}</code>`,
+          icon: 'success',
+          confirmButtonColor: '#2563eb'
+        });
+      });
+    }
+
+    // Charts
+    function initCharts() {
+      // 1. Truck Proportion Donut
+      const ctxTruck = document.getElementById('truckChart').getContext('2d');
+      truckChartInstance = new Chart(ctxTruck, {
+        type: 'doughnut',
+        data: {
+          labels: ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม'],
+          datasets: [{
+            data: [0, 0, 0, 0],
+            backgroundColor: ['#f97316', '#3b82f6', '#10b981', '#a855f7'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: '#94a3b8', boxWidth: 12, font: { family: 'Prompt', size: 11 } }
+            }
+          },
+          cutout: '70%'
+        }
+      });
+
+      // 2. Sales Bar Chart
+      const ctxSales = document.getElementById('salesChart').getContext('2d');
+      salesChartInstance = new Chart(ctxSales, {
+        type: 'bar',
+        data: {
+          labels: SALES_TEAM.map(s => s.name),
+          datasets: [{
+            label: 'จำนวนเคส',
+            data: [0, 0, 0, 0, 0, 0, 0, 0],
+            backgroundColor: '#0284c7',
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: '#94a3b8', font: { family: 'Prompt', size: 11 } }
+            },
+            y: {
+              beginAtZero: true,
+              ticks: { color: '#64748b', stepSize: 1, font: { family: 'Prompt', size: 10 } },
+              grid: { color: 'rgba(255, 255, 255, 0.05)' }
+            }
+          }
+        }
+      });
+    }
+
+    function updateCharts() {
+      if (!truckChartInstance || !salesChartInstance) return;
+
+      // Update Truck Data
+      const truckCounts = [
+        leads.filter(l => l.truck === 'หัวลาก').length,
+        leads.filter(l => l.truck === 'ตู้10').length,
+        leads.filter(l => l.truck === 'หาง').length,
+        leads.filter(l => l.truck === 'ดั๊ม').length
+      ];
+      // Default placeholder if all 0
+      const displayTruckData = truckCounts.every(v => v === 0) ? [1, 1, 1, 1] : truckCounts;
+      truckChartInstance.data.datasets[0].data = displayTruckData;
+      truckChartInstance.update();
+
+      // Update Sales Data
+      const salesCounts = SALES_TEAM.map(s => leads.filter(l => l.sales === s.name).length);
+      salesChartInstance.data.datasets[0].data = salesCounts;
+      salesChartInstance.update();
+    }
+
+    // Modals
+    function openSimulatorModal() {
+      document.getElementById('simModal').style.display = 'flex';
+    }
+    function openAddLeadModal() {
+      document.getElementById('addModal').style.display = 'flex';
+    }
+    function closeModal(id) {
+      document.getElementById(id).style.display = 'none';
+    }
+    function setSimMsg(msg) {
+      document.getElementById('simMessage').value = msg;
+    }
+
+    // Run Simulator
+    function runSimulation() {
+      const source = document.getElementById('simSource').value;
+      const name = document.getElementById('simName').value.trim() || 'ลูกค้า PanCake';
+      const msg = document.getElementById('simMessage').value.trim();
+
+      scannedMessageCount++;
+      const phone = extractThaiPhone(msg);
+
+      if (!phone) {
+        Swal.fire('ไม่พบเบอร์โทร', 'ข้อความนี้ไม่มีเบอร์โทรศัพท์ไทย 10 หลัก ระบบจึงไม่บันทึกเคส', 'warning');
+        saveState();
+        renderMetrics();
+        return;
+      }
+
+      // Check dup
+      if (leads.some(l => l.phone === phone)) {
+        Swal.fire('เบอร์โทรซ้ำ', `เบอร์ ${phone} เคยมีในระบบแล้ว ระบบป้องกันการบันทึกซ้ำ`, 'info');
+        saveState();
+        renderMetrics();
+        return;
+      }
+
+      const truck = detectTruckType(msg);
+      const { date, time } = getNowThai();
+
+      leads.unshift({
+        date,
+        time,
+        source,
+        name,
+        phone,
+        truck,
+        sales: ''
+      });
+
+      saveState();
+      updateAll();
+      closeModal('simModal');
+
+      Swal.fire({
+        title: '🎯 ดักจับเบอร์สำเร็จ!',
+        html: `พบเบอร์ <strong>${phone}</strong> จากคุณ <strong>${name}</strong><br>สนใจรถ: <strong>${truck}</strong><br>เพิ่มลงตารางเรียบร้อยแล้ว`,
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false
+      });
+    }
+
+    // Save Manual Lead
+    function saveManualLead() {
+      const source = document.getElementById('addSource').value;
+      const name = document.getElementById('addName').value.trim();
+      const rawPhone = document.getElementById('addPhone').value.trim();
+      const truck = document.getElementById('addTruck').value;
+      const sales = document.getElementById('addSales').value;
+
+      if (!name) {
+        Swal.fire('กรุณาระบุชื่อลูกค้า', '', 'warning');
+        return;
+      }
+
+      const phone = extractThaiPhone(rawPhone);
+      if (!phone) {
+        Swal.fire('เบอร์โทรไม่ถูกต้อง', 'กรุณากรอกเบอร์โทรศัพท์มือถือ 10 หลัก (เช่น 0812345678)', 'warning');
+        return;
+      }
+
+      const { date, time } = getNowThai();
+
+      leads.unshift({
+        date,
+        time,
+        source,
+        name,
+        phone,
+        truck,
+        sales
+      });
+
+      saveState();
+      updateAll();
+      closeModal('addModal');
+
+      // Clear inputs
+      document.getElementById('addName').value = '';
+      document.getElementById('addPhone').value = '';
+
+      Swal.fire('บันทึกสำเร็จ', `เพิ่มเคสลูกค้า ${name} (${phone}) เรียบร้อยแล้ว`, 'success');
+    }
+
+    // Auto Poll for Incoming Webhooks from Server API
+    async function refreshLeads() {
+      try {
+        const res = await fetch('/api/webhooks/pancake');
+        const data = await res.json();
+        if (data.status === 'online') {
+          // Live pulse
+          renderMetrics();
+        }
+      } catch(e) {}
+    }
+
+    // Auto init
+    window.addEventListener('DOMContentLoaded', () => {
+      initData();
+      setInterval(refreshLeads, 10000);
+    });
   </script>
 </body>
 </html>
