@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/api/webhooks/pancake", "destination": "/api/webhooks/pancake" },
+    { "source": "/", "destination": "/public/index.html" },
+    { "source": "/(.*)", "destination": "/public/$1" }
+  ]
+}
