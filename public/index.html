@@ -589,8 +589,11 @@
         <button class="btn btn-webhook" onclick="copyWebhookUrl()">
           🔗 /api/webhooks/pancake 📋
         </button>
+        <button class="btn btn-excel" onclick="openTruckManageModal()" title="เพิ่ม/แก้ไขประเภทรถที่ลูกค้าสนใจ">
+          ⚙️ จัดการประเภทรถ
+        </button>
         <button class="btn btn-excel" onclick="openLogsModal()" title="ดูประวัติการยิง Webhook จาก PanCake แบบ Real-time">
-          📡 ดู Log การยิง Webhook (<span id="logCountBadge">0</span>)
+          📡 ดู Log (<span id="logCountBadge">0</span>)
         </button>
         <button class="btn btn-sim" onclick="openSimulatorModal()">
           ▷ จำลองแชทลูกค้า (Simulator)
@@ -611,6 +614,7 @@
           🗑️
         </button>
       </div>
+
     </header>
 
     <!-- METRICS (4 CARDS) -->
@@ -830,7 +834,37 @@
     </div>
   </div>
 
+  <!-- MANAGE TRUCK TYPES MODAL -->
+  <div class="modal-overlay" id="truckModal">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-head">
+        <div class="modal-title">⚙️ จัดการประเภทรถที่ลูกค้าสนใจ</div>
+        <button class="btn-close" onclick="closeModal('truckModal')">&times;</button>
+      </div>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+        คุณสามารถเพิ่มประเภทรถใหม่ๆ (เช่น 6 ล้อตู้, คอกเกษตร, สไลด์, เทรลเลอร์) เพื่อให้แสดงในตัวเลือกและกราฟได้ตามต้องการ
+      </p>
+
+      <!-- Add New Input -->
+      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+        <input type="text" class="form-input" id="newTruckInput" placeholder="พิมพ์ชื่อประเภทรถ เช่น 6 ล้อตู้, สไลด์..." onkeydown="if(event.key==='Enter') addTruckType()">
+        <button class="btn btn-add" style="white-space: nowrap;" onclick="addTruckType()">+ เพิ่ม</button>
+      </div>
+
+      <!-- Current List -->
+      <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #f1f5f9;">รายการประเภทรถปัจจุบัน:</div>
+      <div id="truckTypesList" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
+        <!-- Populated by JS -->
+      </div>
+
+      <div style="margin-top: 16px; text-align: right;">
+        <button class="btn btn-excel" onclick="closeModal('truckModal')">ปิดหน้าต่าง</button>
+      </div>
+    </div>
+  </div>
+
   <!-- LIVE LOGS MODAL -->
+
   <div class="modal-overlay" id="logsModal">
     <div class="modal-card" style="max-width: 700px;">
       <div class="modal-head">
@@ -863,7 +897,10 @@
       { name: 'เฟิร์น', badgeClass: 'badge-fern' }
     ];
 
-    const TRUCK_TYPES = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม'];
+    // TRUCK TYPES (Customizable & Persistent)
+    const DEFAULT_TRUCKS = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
+    const TRUCKS_STORAGE_KEY = 'pancake_truck_types_v2';
+    let truckTypes = [...DEFAULT_TRUCKS];
 
     // STATE & PERSISTENCE ENGINE (LocalStorage + IndexedDB)
     const STORAGE_KEY = 'pancake_sales_leads_v3';
@@ -879,6 +916,114 @@
     let truckChartInstance = null;
     let salesChartInstance = null;
     let latestServerLogs = [];
+
+    // TRUCK COLORS PALETTE FOR CHART
+    const CHART_COLORS = [
+      '#f97316', '#3b82f6', '#10b981', '#a855f7', 
+      '#06b6d4', '#ec4899', '#eab308', '#6366f1', 
+      '#14b8a6', '#f43f5e', '#84cc16', '#8b5cf6'
+    ];
+
+    // Load Truck Types
+    function loadTruckTypes() {
+      const saved = localStorage.getItem(TRUCKS_STORAGE_KEY);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            truckTypes = parsed;
+          }
+        } catch(e) {}
+      }
+      populateTruckSelectInputs();
+    }
+
+    function saveTruckTypes() {
+      try {
+        localStorage.setItem(TRUCKS_STORAGE_KEY, JSON.stringify(truckTypes));
+      } catch(e) {}
+      populateTruckSelectInputs();
+      renderTruckTypesList();
+      renderTable();
+      updateCharts();
+    }
+
+    function openTruckManageModal() {
+      renderTruckTypesList();
+      document.getElementById('truckModal').style.display = 'flex';
+      setTimeout(() => document.getElementById('newTruckInput').focus(), 100);
+    }
+
+    function renderTruckTypesList() {
+      const list = document.getElementById('truckTypesList');
+      if (!list) return;
+      list.innerHTML = truckTypes.map((t, idx) => `
+        <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;">
+          <span style="font-weight: 500; font-size: 13px; color: #f8fafc;">🚚 ${t}</span>
+          <button style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #f87171; border-radius: 6px; padding: 4px 8px; font-size: 11px; cursor: pointer;" onclick="removeTruckType(${idx})" title="ลบประเภทรถนี้">
+            ลบ
+          </button>
+        </div>
+      `).join('');
+    }
+
+    function addTruckType() {
+      const input = document.getElementById('newTruckInput');
+      const val = input.value.trim();
+      if (!val) {
+        Swal.fire('กรุณาระบุชื่อประเภทรถ', '', 'warning');
+        return;
+      }
+      if (truckTypes.includes(val)) {
+        Swal.fire('ประเภทรถนี้มีอยู่แล้ว', '', 'info');
+        return;
+      }
+      truckTypes.push(val);
+      input.value = '';
+      saveTruckTypes();
+      Swal.fire({
+        title: 'เพิ่มประเภทรถเรียบร้อย',
+        text: `เพิ่ม "${val}" เข้าสู่ระบบและกราฟแล้ว`,
+        icon: 'success',
+        timer: 1500,
+        showConfirmButton: false
+      });
+    }
+
+    function removeTruckType(idx) {
+      const name = truckTypes[idx];
+      if (truckTypes.length <= 1) {
+        Swal.fire('ไม่สามารถลบได้', 'ต้องมีประเภทรถอย่างน้อย 1 รายการ', 'warning');
+        return;
+      }
+      Swal.fire({
+        title: `ลบประเภทรถ "${name}"?`,
+        text: 'รายการนี้จะถูกนำออกจากตัวเลือกและกราฟ',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'ใช่, ลบออก',
+        cancelButtonText: 'ยกเลิก'
+      }).then(res => {
+        if (res.isConfirmed) {
+          truckTypes.splice(idx, 1);
+          saveTruckTypes();
+          Swal.fire('ลบเรียบร้อย', '', 'success');
+        }
+      });
+    }
+
+    function populateTruckSelectInputs() {
+      const addSelect = document.getElementById('addTruck');
+      if (addSelect) {
+        const currentVal = addSelect.value;
+        addSelect.innerHTML = truckTypes.map(t => `<option value="${t}">${t}</option>`).join('');
+        if (currentVal && truckTypes.includes(currentVal)) {
+          addSelect.value = currentVal;
+        }
+      }
+    }
 
     // 1. Initialize IndexedDB for permanent storage
     function initIndexedDB() {
@@ -902,6 +1047,7 @@
 
     // 2. Load from both LocalStorage and IndexedDB
     async function initData() {
+      loadTruckTypes();
       await initIndexedDB();
 
       let loaded = false;
@@ -966,6 +1112,7 @@
 
       showSaveIndicator('บันทึกข้อมูลถาวรแล้ว 💾');
     }
+
 
     function showSaveIndicator(text) {
       const el = document.getElementById('saveIndicator');
@@ -1079,6 +1226,7 @@
 
       tbody.innerHTML = filtered.map((lead, idx) => {
         const realIdx = leads.indexOf(lead);
+        const truckOptionsHtml = truckTypes.map(t => `<option value="${t}" ${lead.truck === t ? 'selected' : ''}>${t}</option>`).join('');
         return `
           <tr>
             <td>${lead.date}</td>
@@ -1090,11 +1238,7 @@
             </td>
             <td>
               <select class="select-sm" onchange="updateLeadTruck(${realIdx}, this.value)">
-                <option value="หัวลาก" ${lead.truck === 'หัวลาก' ? 'selected' : ''}>หัวลาก</option>
-                <option value="ตู้10" ${lead.truck === 'ตู้10' ? 'selected' : ''}>ตู้10</option>
-                <option value="หาง" ${lead.truck === 'หาง' ? 'selected' : ''}>หาง</option>
-                <option value="ดั๊ม" ${lead.truck === 'ดั๊ม' ? 'selected' : ''}>ดั๊ม</option>
-                <option value="อื่นๆ" ${lead.truck === 'อื่นๆ' ? 'selected' : ''}>อื่นๆ</option>
+                ${truckOptionsHtml}
               </select>
             </td>
             <td>
@@ -1115,6 +1259,7 @@
         `;
       }).join('');
     }
+
 
     function updateLeadTruck(idx, val) {
       if (leads[idx]) {
@@ -1275,10 +1420,10 @@
       truckChartInstance = new Chart(ctxTruck, {
         type: 'doughnut',
         data: {
-          labels: ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม'],
+          labels: truckTypes,
           datasets: [{
-            data: [0, 0, 0, 0],
-            backgroundColor: ['#f97316', '#3b82f6', '#10b981', '#a855f7'],
+            data: truckTypes.map(() => 0),
+            backgroundColor: truckTypes.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
             borderWidth: 0
           }]
         },
@@ -1322,20 +1467,21 @@
     function updateCharts() {
       if (!truckChartInstance || !salesChartInstance) return;
 
-      const truckCounts = [
-        leads.filter(l => l.truck === 'หัวลาก').length,
-        leads.filter(l => l.truck === 'ตู้10').length,
-        leads.filter(l => l.truck === 'หาง').length,
-        leads.filter(l => l.truck === 'ดั๊ม').length
-      ];
-      const displayTruckData = truckCounts.every(v => v === 0) ? [1, 1, 1, 1] : truckCounts;
+      // Dynamic Truck Data
+      truckChartInstance.data.labels = truckTypes;
+      truckChartInstance.data.datasets[0].backgroundColor = truckTypes.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
+
+      const truckCounts = truckTypes.map(t => leads.filter(l => l.truck === t).length);
+      const displayTruckData = truckCounts.every(v => v === 0) ? truckTypes.map(() => 1) : truckCounts;
       truckChartInstance.data.datasets[0].data = displayTruckData;
       truckChartInstance.update();
 
+      // Dynamic Sales Data
       const salesCounts = SALES_TEAM.map(s => leads.filter(l => l.sales === s.name).length);
       salesChartInstance.data.datasets[0].data = salesCounts;
       salesChartInstance.update();
     }
+
 
     // Modals
     function openSimulatorModal() { document.getElementById('simModal').style.display = 'flex'; }
