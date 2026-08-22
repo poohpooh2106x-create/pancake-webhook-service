@@ -897,13 +897,9 @@
       { name: 'เฟิร์น', badgeClass: 'badge-fern' }
     ];
 
-    // TRUCK TYPES (Customizable & Persistent)
-    const DEFAULT_TRUCKS = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
-    const TRUCKS_STORAGE_KEY = 'pancake_truck_types_v2';
-    let truckTypes = [...DEFAULT_TRUCKS];
-
-    // STATE & PERSISTENCE ENGINE (LocalStorage + IndexedDB)
-    const STORAGE_KEY = 'pancake_sales_leads_v3';
+    // STATE & BULLETPROOF PERSISTENCE ENGINE
+    const MASTER_LEADS_KEY = 'pancake_crm_master_leads';
+    const BACKUP_LEADS_KEY = 'pancake_crm_permanent_backup';
     const SCANNED_KEY = 'pancake_scanned_count_v3';
     const DB_NAME = 'PancakeCRM_DB';
     const DB_STORE = 'leads_store';
@@ -924,16 +920,20 @@
       '#14b8a6', '#f43f5e', '#84cc16', '#8b5cf6'
     ];
 
-    // Load Truck Types
+    // Load Truck Types (Multi-layer)
     function loadTruckTypes() {
-      const saved = localStorage.getItem(TRUCKS_STORAGE_KEY);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            truckTypes = parsed;
-          }
-        } catch(e) {}
+      const keys = [TRUCKS_STORAGE_KEY, 'pancake_truck_types_v1', 'pancake_truck_types'];
+      for (const k of keys) {
+        const saved = localStorage.getItem(k);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              truckTypes = parsed;
+              break;
+            }
+          } catch(e) {}
+        }
       }
       populateTruckSelectInputs();
     }
@@ -941,6 +941,7 @@
     async function saveTruckTypes() {
       try {
         localStorage.setItem(TRUCKS_STORAGE_KEY, JSON.stringify(truckTypes));
+        localStorage.setItem('pancake_truck_types_master', JSON.stringify(truckTypes));
       } catch(e) {}
       populateTruckSelectInputs();
       renderTruckTypesList();
@@ -1024,11 +1025,10 @@
       }
     }
 
-
     // 1. Initialize IndexedDB for permanent storage
     function initIndexedDB() {
       return new Promise((resolve) => {
-        const req = indexedDB.open(DB_NAME, 1);
+        const req = indexedDB.open(DB_NAME, 2);
         req.onupgradeneeded = (e) => {
           const database = e.target.result;
           if (!database.objectStoreNames.contains(DB_STORE)) {
@@ -1045,58 +1045,90 @@
       });
     }
 
-    // 2. Load from both LocalStorage and IndexedDB
+    // 2. Load from all storage sources & merge without losing anything
     async function initData() {
       loadTruckTypes();
       await initIndexedDB();
 
-      let loaded = false;
+      const loadedMap = new Map();
 
-      // Try LocalStorage first
-      const savedLeads = localStorage.getItem(STORAGE_KEY);
-      if (savedLeads) {
-        try {
-          const parsed = JSON.parse(savedLeads);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            leads = parsed;
-            loaded = true;
-          }
-        } catch(e) {}
+      // Scan all historical LocalStorage keys to merge any previous data!
+      const historicalKeys = [
+        MASTER_LEADS_KEY,
+        BACKUP_LEADS_KEY,
+        'pancake_sales_leads_v3',
+        'pancake_sales_leads_v2',
+        'pancake_sales_leads_v1',
+        'pancake_sales_leads'
+      ];
+
+      for (const k of historicalKeys) {
+        const item = localStorage.getItem(k);
+        if (item) {
+          try {
+            const arr = JSON.parse(item);
+            if (Array.isArray(arr)) {
+              arr.forEach(l => {
+                const key = l.phone || l.id;
+                if (key && !loadedMap.has(key)) {
+                  loadedMap.set(key, l);
+                }
+              });
+            }
+          } catch(e) {}
+        }
       }
 
-      // If LocalStorage was empty, try IndexedDB backup
-      if (!loaded && db) {
+      // Also read IndexedDB backup
+      if (db) {
         try {
           const tx = db.transaction(DB_STORE, 'readonly');
           const store = tx.objectStore(DB_STORE);
           const req = store.get('all_leads');
           req.onsuccess = () => {
             if (req.result && Array.isArray(req.result.data)) {
-              leads = req.result.data;
-              saveState(); // Re-sync to LocalStorage
-              updateAll();
+              req.result.data.forEach(l => {
+                const key = l.phone || l.id;
+                if (key && !loadedMap.has(key)) {
+                  loadedMap.set(key, l);
+                }
+              });
+              if (loadedMap.size > 0) {
+                leads = Array.from(loadedMap.values());
+                saveState(false);
+                updateAll();
+              }
             }
           };
         } catch(e) {}
       }
 
+      if (loadedMap.size > 0) {
+        leads = Array.from(loadedMap.values());
+      }
+
       const savedScanned = localStorage.getItem(SCANNED_KEY);
       if (savedScanned) {
-        scannedMessageCount = parseInt(savedScanned, 10) || 0;
+        scannedMessageCount = parseInt(savedScanned, 10) || leads.length;
+      } else {
+        scannedMessageCount = leads.length;
       }
 
       initCharts();
       updateAll();
-      showSaveIndicator('โหลดข้อมูลเรียบร้อย ✅');
+      showSaveIndicator('โหลดข้อมูลพร้อมใช้งาน ✅');
 
-      // Immediate first sync with server
+      // Immediate first sync with server & cloud
       refreshLeads();
     }
 
-    // Save permanently to Cloud Database, LocalStorage, and IndexedDB
+    // Save permanently to all layers (Master Key, Backup Key, IndexedDB, Cloud Store)
     async function saveState(syncToCloud = true) {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(leads));
+        const json = JSON.stringify(leads);
+        localStorage.setItem(MASTER_LEADS_KEY, json);
+        localStorage.setItem(BACKUP_LEADS_KEY, json);
+        localStorage.setItem('pancake_sales_leads_v3', json);
         localStorage.setItem(SCANNED_KEY, scannedMessageCount);
         localStorage.setItem(TRUCKS_STORAGE_KEY, JSON.stringify(truckTypes));
       } catch(e) {
@@ -1124,6 +1156,7 @@
         } catch(e) {}
       }
     }
+
 
     function showSaveIndicator(text) {
       const el = document.getElementById('saveIndicator');
@@ -1650,11 +1683,17 @@
             saveState(false); // Save locally without echoing back to cloud
             updateAll();
           }
+
+          // AUTO-HEAL: If local device has more historical leads than cloud, re-seed cloud!
+          if (leads.length > data.leads.length) {
+            saveState(true);
+          }
         }
       } catch(e) {
         console.warn('Sync error:', e.message);
       }
     }
+
 
     // Live Logs View
     async function fetchLiveLogs() {
