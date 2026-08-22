@@ -1669,28 +1669,61 @@
           }
         }
 
-        // Sync all leads from cloud across all devices
+        // Sync all leads from cloud across all devices with smart merging
         if (Array.isArray(data.leads) && data.leads.length > 0) {
           let hasChanges = false;
+          let needsPushToCloud = false;
 
           // If local leads is empty (new device / fresh browser), populate all from cloud!
           if (leads.length === 0) {
             leads = data.leads;
             hasChanges = true;
           } else {
-            // Check for new leads or updates from other devices/PanCake
             for (const serverLead of data.leads) {
               const existingIdx = leads.findIndex(l => (serverLead.id && l.id === serverLead.id) || l.phone === serverLead.phone);
               if (existingIdx !== -1) {
-                if (leads[existingIdx].sales !== serverLead.sales || leads[existingIdx].truck !== serverLead.truck || leads[existingIdx].phone !== serverLead.phone || leads[existingIdx].source !== serverLead.source) {
-                  leads[existingIdx] = serverLead;
+                const local = leads[existingIdx];
+
+                // 1. Sales Assignment (NEVER overwrite a filled local sales rep with an empty server sales)
+                if (local.sales && !serverLead.sales) {
+                  needsPushToCloud = true; // Local has sales, notify cloud
+                } else if (!local.sales && serverLead.sales) {
+                  local.sales = serverLead.sales;
+                  hasChanges = true;
+                } else if (local.sales && serverLead.sales && local.sales !== serverLead.sales) {
+                  local.sales = serverLead.sales;
+                  hasChanges = true;
+                }
+
+                // 2. Truck Type
+                if (local.truck && !serverLead.truck) {
+                  needsPushToCloud = true;
+                } else if (!local.truck && serverLead.truck) {
+                  local.truck = serverLead.truck;
+                  hasChanges = true;
+                }
+
+                // 3. Channel Source
+                if (serverLead.source && local.source !== serverLead.source && serverLead.source !== 'FB เคพีศรีราชา') {
+                  local.source = serverLead.source;
+                  hasChanges = true;
+                }
+
+                // 4. Customer Name
+                if (serverLead.name && serverLead.name !== 'ลูกค้า PanCake' && local.name !== serverLead.name) {
+                  local.name = serverLead.name;
                   hasChanges = true;
                 }
               } else {
+                // New lead from PanCake or other device
                 leads.unshift(serverLead);
                 hasChanges = true;
                 scannedMessageCount++;
               }
+            }
+
+            if (leads.length > data.leads.length) {
+              needsPushToCloud = true;
             }
           }
 
@@ -1699,15 +1732,15 @@
             updateAll();
           }
 
-          // AUTO-HEAL: If local device has more historical leads than cloud, re-seed cloud!
-          if (leads.length > data.leads.length) {
-            saveState(true);
+          if (needsPushToCloud) {
+            saveState(true); // Persist local assignments to Cloud Database
           }
         }
       } catch(e) {
         console.warn('Sync error:', e.message);
       }
     }
+
 
     // Live Logs View
     async function fetchLiveLogs() {

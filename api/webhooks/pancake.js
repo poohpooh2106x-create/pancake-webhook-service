@@ -203,6 +203,14 @@ module.exports = async (req, res) => {
     return res.status(200).json({ message: 'OK' });
   }
 
+  // Parse body safely early for all methods
+  let payload = req.body;
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch(e) { payload = {}; }
+  } else if (!payload) {
+    payload = {};
+  }
+
   // GET: Return global cloud leads, truck types & logs to frontend dashboard
   if (req.method === 'GET') {
     await fetchCloudData();
@@ -221,11 +229,15 @@ module.exports = async (req, res) => {
   }
 
   // PUT / POST with sync action: Save state from frontend (user assigned sales or added truck)
-  if (req.query?.action === 'sync_state' || req.body?.action === 'sync_state') {
-    if (Array.isArray(req.body?.leads)) memoryLeads = req.body.leads;
-    if (Array.isArray(req.body?.truckTypes)) memoryTruckTypes = req.body.truckTypes;
+  if (req.query?.action === 'sync_state' || payload?.action === 'sync_state') {
+    if (Array.isArray(payload?.leads)) memoryLeads = payload.leads;
+    if (Array.isArray(payload?.truckTypes)) memoryTruckTypes = payload.truckTypes;
     await saveCloudData(memoryLeads, memoryTruckTypes);
-    return res.status(200).json({ success: true, message: 'Cloud state synced successfully' });
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Cloud state synced successfully', 
+      totalLeads: memoryLeads.length 
+    });
   }
 
   // DELETE: Clear server logs if requested
@@ -240,13 +252,6 @@ module.exports = async (req, res) => {
 
   const { date, time } = getThaiDateTime();
 
-  try {
-    let payload = req.body;
-    if (typeof payload === 'string') {
-      try { payload = JSON.parse(payload); } catch(e) { payload = { raw: req.body }; }
-    } else if (!payload) {
-      payload = {};
-    }
 
     // Record incoming raw webhook log
     const logEntry = {
@@ -404,9 +409,13 @@ module.exports = async (req, res) => {
         memoryLeads[existingIdx].time = time;
         memoryLeads[existingIdx].source = finalSource;
         if (customerName !== 'ลูกค้า PanCake') memoryLeads[existingIdx].name = customerName;
+        if (!memoryLeads[existingIdx].truck && truck) memoryLeads[existingIdx].truck = truck;
+        leadObj.sales = memoryLeads[existingIdx].sales || '';
+        leadObj.truck = memoryLeads[existingIdx].truck || truck;
       } else {
         memoryLeads.unshift(leadObj);
       }
+
 
       newLeads.push(leadObj);
 
