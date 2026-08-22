@@ -1167,19 +1167,32 @@
     }
 
     // Helper: Normalize Thai Phone Number
+    // Helper: Normalize Thai Phone Number (10-digit Mobile: 06, 08, 09)
     function extractThaiPhone(text) {
       if (!text) return null;
       const thaiMap = {'๐':'0','๑':'1','๒':'2','๓':'3','๔':'4','๕':'5','๖':'6','๗':'7','๘':'8','๙':'9'};
       const norm = String(text).replace(/[๐-๙]/g, c => thaiMap[c] || c);
-      const cleaned = norm.replace(/[\s\-\.\(\)\/]/g, '');
 
-      let phone = cleaned;
-      if (phone.startsWith('+66')) phone = '0' + phone.slice(3);
-      else if (phone.startsWith('66') && phone.length >= 11) phone = '0' + phone.slice(2);
+      const regex = /(?:^|[^\d])(0[689][\d\s\-\.\/]{7,13}\d)(?:[^\d]|$)/g;
+      const regexIntl = /(?:^|[^\d])(?:\+?66)([\d\s\-\.\/]{8,14}\d)(?:[^\d]|$)/g;
 
-      const m = phone.match(/0[689]\d{8}/) || phone.match(/0[2-57]\d{7,8}/);
-      return m ? m[0] : null;
+      for (const match of norm.matchAll(regex)) {
+        const cleaned = match[1].replace(/[\s\-\.\/]/g, '');
+        if (cleaned.length === 10 && /^0[689]\d{8}$/.test(cleaned)) {
+          return cleaned;
+        }
+      }
+
+      for (const match of norm.matchAll(regexIntl)) {
+        const cleaned = match[1].replace(/[\s\-\.\/]/g, '');
+        if (cleaned.length === 9 && /^[689]\d{8}$/.test(cleaned)) {
+          return '0' + cleaned;
+        }
+      }
+
+      return null;
     }
+
 
     function detectTruckType(text) {
       if (!text) return 'หัวลาก';

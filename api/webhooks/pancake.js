@@ -38,82 +38,59 @@ function normalizeThaiDigits(text) {
 
 function cleanThaiPhoneNumber(rawPhone) {
   if (!rawPhone) return null;
-  let cleaned = normalizeThaiDigits(rawPhone).replace(/[\s\-\.\(\)\/]/g, '');
-  if (cleaned.startsWith('+66')) {
-    cleaned = '0' + cleaned.slice(3);
-  } else if (cleaned.startsWith('66') && cleaned.length >= 11) {
-    cleaned = '0' + cleaned.slice(2);
-  }
-  const m = cleaned.match(/0[689]\d{8}/) || cleaned.match(/0[2-57]\d{7,8}/);
-  return m ? m[0] : null;
-}
+  if (typeof rawPhone !== 'string') rawPhone = String(rawPhone);
 
-function detectTruckType(text) {
-  if (!text) return 'หัวลาก';
-  const t = String(text).toLowerCase();
-  if (t.includes('ตู้') || t.includes('10 บาน')) return 'ตู้10';
-  if (t.includes('หาง') || t.includes('ก้างปลา') || t.includes('เทรลเลอร์')) return 'หาง';
-  if (t.includes('ดั๊ม') || t.includes('ดัมพ์') || t.includes('ดั้มพ์')) return 'ดั๊ม';
-  if (t.includes('6 ล้อ') || t.includes('หกล้อ')) return '6 ล้อ';
-  return 'หัวลาก';
-}
+  const thaiDigitsMap = {
+    '๐': '0', '๑': '1', '๒': '2', '๓': '3', '๔': '4',
+    '๕': '5', '๖': '6', '๗': '7', '๘': '8', '๙': '9'
+  };
+  const norm = rawPhone.replace(/[๐-๙]/g, (ch) => thaiDigitsMap[ch] || ch);
 
-function resolveChannelSource(rawSource, querySource, payload) {
-  if (querySource && querySource.trim()) return querySource.trim();
-  
-  const pName = payload?.page_name || payload?.page?.name || payload?.data?.page_name || '';
-  const candidate = String(rawSource || pName || '').trim();
+  // Match 10-digit mobile numbers starting with 06, 08, 09 (e.g. 081-234-5678, 099 731 6431, 0812345678)
+  const regex = /(?:^|[^\d])(0[689][\d\s\-\.\/]{7,13}\d)(?:[^\d]|$)/g;
+  const regexIntl = /(?:^|[^\d])(?:\+?66)([\d\s\-\.\/]{8,14}\d)(?:[^\d]|$)/g;
 
-  if (candidate.includes('เฮียตั้ม') || candidate.toLowerCase().includes('tum')) return 'FB เฮียตั้มรถติด';
-  if (candidate.includes('เคพี') || candidate.toLowerCase().includes('kp')) return 'FB เคพีศรีราชา';
-  if (candidate.toLowerCase().includes('tiktok')) return 'TikTok';
-  if (candidate.toLowerCase().includes('loa') || candidate.toLowerCase().includes('line')) return 'LOA เคพี';
-
-  if (!candidate || /^[-0-9,\s_]+$/.test(candidate)) {
-    return 'FB เคพีศรีราชา';
-  }
-  return candidate;
-}
-
-function getThaiDateTime() {
-  const now = new Date();
-  const optionsDate = { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', year: 'numeric' };
-  const optionsTime = { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
-  const date = new Intl.DateTimeFormat('en-GB', optionsDate).format(now);
-  const time = new Intl.DateTimeFormat('en-GB', optionsTime).format(now);
-  return { date, time };
-}
-
-function isDuplicateSpam(id, phone) {
-  const key = `${id || 'noid'}:${phone}`;
-  const now = Date.now();
-  for (const [k, timestamp] of dedupeCache.entries()) {
-    if (now - timestamp > DEDUPE_TTL_MS) {
-      dedupeCache.delete(k);
+  for (const match of norm.matchAll(regex)) {
+    const cleaned = match[1].replace(/[\s\-\.\/]/g, '');
+    if (cleaned.length === 10 && /^0[689]\d{8}$/.test(cleaned)) {
+      return cleaned;
     }
   }
-  return dedupeCache.has(key);
+
+  for (const match of norm.matchAll(regexIntl)) {
+    const cleaned = match[1].replace(/[\s\-\.\/]/g, '');
+    if (cleaned.length === 9 && /^[689]\d{8}$/.test(cleaned)) {
+      return '0' + cleaned;
+    }
+  }
+
+  return null;
 }
 
-function recordLeadDedupe(id, phone) {
-  const key = `${id || 'noid'}:${phone}`;
-  dedupeCache.set(key, Date.now());
-}
+const IGNORED_FIELDS = new Set([
+  'modified_on', 'created_on', 'created_at', 'updated_at', 'date', 'time', 'timestamp',
+  'id', 'uuid', 'conversation_id', 'page_id', 'psid', 'fb_id', 'customer_id', 'user_id',
+  'account_id', 'workspace_id', 'headers', 'url', 'avatar', 'link', 'photo_url'
+]);
 
-// Deep search any string for Thai phone number
-function deepFindThaiPhone(obj) {
+// Deep search text fields for Thai mobile phone number
+function deepFindThaiPhone(obj, parentKey = '') {
   if (!obj) return null;
+  if (IGNORED_FIELDS.has(parentKey.toLowerCase())) return null;
+
   if (typeof obj === 'string') {
     return cleanThaiPhoneNumber(obj);
   }
   if (typeof obj === 'object') {
     for (const key of Object.keys(obj)) {
-      const found = deepFindThaiPhone(obj[key]);
+      if (IGNORED_FIELDS.has(key.toLowerCase())) continue;
+      const found = deepFindThaiPhone(obj[key], key);
       if (found) return found;
     }
   }
   return null;
 }
+
 
 // Cloud Storage Helpers (Global Multi-Device Sync)
 function fetchCloudData() {
