@@ -614,7 +614,6 @@
           🗑️
         </button>
       </div>
-
     </header>
 
     <!-- METRICS (4 CARDS) -->
@@ -662,7 +661,7 @@
       <div class="chart-card">
         <div class="chart-title">
           <span>🚚 สัดส่วนรถที่ลูกค้าสนใจ (มีเบอร์โทร)</span>
-          <span class="chart-sub">หัวลาก/ตู้10/หาง/ดั๊ม</span>
+          <span class="chart-sub">หัวลาก/ตู้10/หาง/ดั๊ม/กำหนดเอง</span>
         </div>
         <div class="chart-container">
           <canvas id="truckChart"></canvas>
@@ -732,6 +731,35 @@
         </table>
       </div>
     </section>
+  </div>
+
+  <!-- MANAGE TRUCK TYPES MODAL -->
+  <div class="modal-overlay" id="truckModal">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-head">
+        <div class="modal-title">⚙️ จัดการประเภทรถที่ลูกค้าสนใจ</div>
+        <button class="btn-close" onclick="closeModal('truckModal')">&times;</button>
+      </div>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+        คุณสามารถพิมพ์ชื่อประเภทรถที่ต้องการเพิ่ม (เช่น 6 ล้อ, รถสไลด์, คอกเกษตร, เทรลเลอร์) แล้วกด Enter หรือกดปุ่มเพิ่มได้เลยครับ
+      </p>
+
+      <!-- Add New Input -->
+      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+        <input type="text" class="form-input" id="newTruckInput" placeholder="พิมพ์ชื่อประเภทรถ เช่น 6 ล้อตู้, สไลด์..." onkeydown="if(event.key==='Enter') addTruckType()">
+        <button class="btn btn-add" style="white-space: nowrap;" onclick="addTruckType()">+ เพิ่ม</button>
+      </div>
+
+      <!-- Current List -->
+      <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #f1f5f9;">รายการประเภทรถปัจจุบัน:</div>
+      <div id="truckTypesList" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
+        <!-- Populated by JS -->
+      </div>
+
+      <div style="margin-top: 16px; text-align: right;">
+        <button class="btn btn-excel" onclick="closeModal('truckModal')">ปิดหน้าต่าง</button>
+      </div>
+    </div>
   </div>
 
   <!-- SIMULATOR MODAL -->
@@ -805,11 +833,7 @@
       <div class="form-group">
         <label class="form-label">รถที่สนใจ</label>
         <select class="form-select" id="addTruck">
-          <option value="หัวลาก">หัวลาก</option>
-          <option value="ตู้10">ตู้10</option>
-          <option value="หาง">หาง</option>
-          <option value="ดั๊ม">ดั๊ม</option>
-          <option value="อื่นๆ">อื่นๆ</option>
+          <!-- Populated by JS -->
         </select>
       </div>
 
@@ -834,37 +858,7 @@
     </div>
   </div>
 
-  <!-- MANAGE TRUCK TYPES MODAL -->
-  <div class="modal-overlay" id="truckModal">
-    <div class="modal-card" style="max-width: 520px;">
-      <div class="modal-head">
-        <div class="modal-title">⚙️ จัดการประเภทรถที่ลูกค้าสนใจ</div>
-        <button class="btn-close" onclick="closeModal('truckModal')">&times;</button>
-      </div>
-      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
-        คุณสามารถเพิ่มประเภทรถใหม่ๆ (เช่น 6 ล้อตู้, คอกเกษตร, สไลด์, เทรลเลอร์) เพื่อให้แสดงในตัวเลือกและกราฟได้ตามต้องการ
-      </p>
-
-      <!-- Add New Input -->
-      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
-        <input type="text" class="form-input" id="newTruckInput" placeholder="พิมพ์ชื่อประเภทรถ เช่น 6 ล้อตู้, สไลด์..." onkeydown="if(event.key==='Enter') addTruckType()">
-        <button class="btn btn-add" style="white-space: nowrap;" onclick="addTruckType()">+ เพิ่ม</button>
-      </div>
-
-      <!-- Current List -->
-      <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #f1f5f9;">รายการประเภทรถปัจจุบัน:</div>
-      <div id="truckTypesList" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
-        <!-- Populated by JS -->
-      </div>
-
-      <div style="margin-top: 16px; text-align: right;">
-        <button class="btn btn-excel" onclick="closeModal('truckModal')">ปิดหน้าต่าง</button>
-      </div>
-    </div>
-  </div>
-
   <!-- LIVE LOGS MODAL -->
-
   <div class="modal-overlay" id="logsModal">
     <div class="modal-card" style="max-width: 700px;">
       <div class="modal-head">
@@ -897,6 +891,12 @@
       { name: 'เฟิร์น', badgeClass: 'badge-fern' }
     ];
 
+    // TRUCK TYPES (Customizable & Bulletproof Persistence)
+    const DEFAULT_TRUCKS = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
+    const TRUCKS_STORAGE_KEY = 'pancake_truck_types_v2';
+    let truckTypes = [...DEFAULT_TRUCKS];
+    let lastTruckEditTime = 0;
+
     // STATE & BULLETPROOF PERSISTENCE ENGINE
     const MASTER_LEADS_KEY = 'pancake_crm_master_leads';
     const BACKUP_LEADS_KEY = 'pancake_crm_permanent_backup';
@@ -922,14 +922,14 @@
 
     // Load Truck Types (Multi-layer)
     function loadTruckTypes() {
-      const keys = [TRUCKS_STORAGE_KEY, 'pancake_truck_types_v1', 'pancake_truck_types'];
+      const keys = [TRUCKS_STORAGE_KEY, 'pancake_truck_types_master', 'pancake_truck_types_v1', 'pancake_truck_types'];
       for (const k of keys) {
         const saved = localStorage.getItem(k);
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              truckTypes = parsed;
+              truckTypes = Array.from(new Set([...truckTypes, ...parsed]));
               break;
             }
           } catch(e) {}
@@ -938,33 +938,32 @@
       populateTruckSelectInputs();
     }
 
-    async function saveTruckTypes() {
+    function saveTruckTypes() {
+      lastTruckEditTime = Date.now();
       try {
         localStorage.setItem(TRUCKS_STORAGE_KEY, JSON.stringify(truckTypes));
         localStorage.setItem('pancake_truck_types_master', JSON.stringify(truckTypes));
       } catch(e) {}
-      populateTruckSelectInputs();
-      renderTruckTypesList();
-      renderTable();
-      updateCharts();
 
-      // Immediate Cloud Sync
-      try {
-        await fetch('/api/webhooks/pancake?action=sync_state', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ leads, truckTypes })
-        });
-      } catch(e) {}
+      try { populateTruckSelectInputs(); } catch(e) {}
+      try { renderTruckTypesList(); } catch(e) {}
+      try { renderTable(); } catch(e) {}
+      try { updateCharts(); } catch(e) {}
+
+      // Non-blocking sync to cloud
+      saveState(true);
     }
 
     function openTruckManageModal() {
       renderTruckTypesList();
-      document.getElementById('truckModal').style.display = 'flex';
-      setTimeout(() => {
-        const inp = document.getElementById('newTruckInput');
-        if (inp) inp.focus();
-      }, 50);
+      const modal = document.getElementById('truckModal');
+      if (modal) {
+        modal.style.display = 'flex';
+        setTimeout(() => {
+          const inp = document.getElementById('newTruckInput');
+          if (inp) inp.focus();
+        }, 50);
+      }
     }
 
     function renderTruckTypesList() {
@@ -982,13 +981,14 @@
 
     function addTruckType() {
       const input = document.getElementById('newTruckInput');
+      if (!input) return;
       const val = input.value.trim();
       if (!val) {
         input.focus();
         return;
       }
       if (truckTypes.includes(val)) {
-        Swal.fire({ title: 'มีประเภทรถนี้อยู่แล้ว', icon: 'info', timer: 1200, showConfirmButton: false });
+        Swal.fire({ title: 'มีประเภทรถนี้อยู่แล้ว', icon: 'info', timer: 1000, showConfirmButton: false });
         input.focus();
         return;
       }
@@ -1157,7 +1157,6 @@
       }
     }
 
-
     function showSaveIndicator(text) {
       const el = document.getElementById('saveIndicator');
       if (el) {
@@ -1271,7 +1270,11 @@
 
       tbody.innerHTML = filtered.map((lead, idx) => {
         const realIdx = leads.indexOf(lead);
-        const truckOptionsHtml = truckTypes.map(t => `<option value="${t}" ${lead.truck === t ? 'selected' : ''}>${t}</option>`).join('');
+        let leadTruckList = [...truckTypes];
+        if (lead.truck && !leadTruckList.includes(lead.truck)) {
+          leadTruckList.unshift(lead.truck);
+        }
+        const truckOptionsHtml = leadTruckList.map(t => `<option value="${t}" ${lead.truck === t ? 'selected' : ''}>${t}</option>`).join('');
         const CHANNELS = ['FB เคพีศรีราชา', 'FB เฮียตั้มรถติด', 'TikTok', 'LOA เคพี', 'อื่นๆ'];
         const currentSource = sanitizeChannelName(lead.source);
         const channelOptionsHtml = CHANNELS.map(c => `<option value="${c}" ${currentSource === c ? 'selected' : ''}>${c}</option>`).join('');
@@ -1336,7 +1339,7 @@
       if (leads[idx]) {
         leads[idx].truck = val;
         saveState();
-        updateCharts();
+        try { updateCharts(); } catch(e) {}
       }
     }
 
@@ -1346,7 +1349,7 @@
         saveState();
         renderMetrics();
         renderSalesList();
-        updateCharts();
+        try { updateCharts(); } catch(e) {}
         renderTable();
       }
     }
@@ -1487,70 +1490,80 @@
 
     // Charts
     function initCharts() {
-      const ctxTruck = document.getElementById('truckChart').getContext('2d');
-      truckChartInstance = new Chart(ctxTruck, {
-        type: 'doughnut',
-        data: {
-          labels: truckTypes,
-          datasets: [{
-            data: truckTypes.map(() => 0),
-            backgroundColor: truckTypes.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
-            borderWidth: 0
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: { color: '#94a3b8', boxWidth: 12, font: { family: 'Prompt', size: 11 } }
-            }
+      try {
+        const ctxTruck = document.getElementById('truckChart').getContext('2d');
+        truckChartInstance = new Chart(ctxTruck, {
+          type: 'doughnut',
+          data: {
+            labels: truckTypes,
+            datasets: [{
+              data: truckTypes.map(() => 0),
+              backgroundColor: truckTypes.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+              borderWidth: 0
+            }]
           },
-          cutout: '70%'
-        }
-      });
-
-      const ctxSales = document.getElementById('salesChart').getContext('2d');
-      salesChartInstance = new Chart(ctxSales, {
-        type: 'bar',
-        data: {
-          labels: SALES_TEAM.map(s => s.name),
-          datasets: [{
-            label: 'จำนวนเคส',
-            data: [0, 0, 0, 0, 0, 0, 0, 0],
-            backgroundColor: '#0284c7',
-            borderRadius: 6
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { family: 'Prompt', size: 11 } } },
-            y: { beginAtZero: true, ticks: { color: '#64748b', stepSize: 1, font: { family: 'Prompt', size: 10 } }, grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 300 },
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { color: '#94a3b8', boxWidth: 12, font: { family: 'Prompt', size: 11 } }
+              }
+            },
+            cutout: '70%'
           }
-        }
-      });
+        });
+
+        const ctxSales = document.getElementById('salesChart').getContext('2d');
+        salesChartInstance = new Chart(ctxSales, {
+          type: 'bar',
+          data: {
+            labels: SALES_TEAM.map(s => s.name),
+            datasets: [{
+              label: 'จำนวนเคส',
+              data: [0, 0, 0, 0, 0, 0, 0, 0],
+              backgroundColor: '#0284c7',
+              borderRadius: 6
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 300 },
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { family: 'Prompt', size: 11 } } },
+              y: { beginAtZero: true, ticks: { color: '#64748b', stepSize: 1, font: { family: 'Prompt', size: 10 } }, grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+            }
+          }
+        });
+      } catch(e) {
+        console.warn('Init chart error:', e);
+      }
     }
 
     function updateCharts() {
       if (!truckChartInstance || !salesChartInstance) return;
+      try {
+        // Dynamic Truck Data
+        const validTrucks = truckTypes && truckTypes.length > 0 ? truckTypes : ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม'];
+        truckChartInstance.data.labels = [...validTrucks];
+        truckChartInstance.data.datasets[0].backgroundColor = validTrucks.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
 
-      // Dynamic Truck Data
-      truckChartInstance.data.labels = truckTypes;
-      truckChartInstance.data.datasets[0].backgroundColor = truckTypes.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
+        const truckCounts = validTrucks.map(t => leads.filter(l => l.truck === t).length);
+        const displayTruckData = truckCounts.every(v => v === 0) ? validTrucks.map(() => 1) : truckCounts;
+        truckChartInstance.data.datasets[0].data = displayTruckData;
+        truckChartInstance.update('none');
 
-      const truckCounts = truckTypes.map(t => leads.filter(l => l.truck === t).length);
-      const displayTruckData = truckCounts.every(v => v === 0) ? truckTypes.map(() => 1) : truckCounts;
-      truckChartInstance.data.datasets[0].data = displayTruckData;
-      truckChartInstance.update();
-
-      // Dynamic Sales Data
-      const salesCounts = SALES_TEAM.map(s => leads.filter(l => l.sales === s.name).length);
-      salesChartInstance.data.datasets[0].data = salesCounts;
-      salesChartInstance.update();
+        // Dynamic Sales Data
+        const salesCounts = SALES_TEAM.map(s => leads.filter(l => l.sales === s.name).length);
+        salesChartInstance.data.datasets[0].data = salesCounts;
+        salesChartInstance.update('none');
+      } catch(e) {
+        console.warn('Update chart error:', e);
+      }
     }
 
     // Modals
@@ -1644,12 +1657,15 @@
           latestServerLogs = data.webhookLogs;
         }
 
-        // Sync custom truck types from cloud
+        // Sync custom truck types from cloud smoothly without reverting local changes
         if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
-          if (JSON.stringify(truckTypes) !== JSON.stringify(data.truckTypes)) {
-            truckTypes = data.truckTypes;
-            populateTruckSelectInputs();
-            renderTruckTypesList();
+          if (Date.now() - lastTruckEditTime > 15000) {
+            const merged = Array.from(new Set([...truckTypes, ...data.truckTypes]));
+            if (JSON.stringify(truckTypes) !== JSON.stringify(merged)) {
+              truckTypes = merged;
+              populateTruckSelectInputs();
+              renderTruckTypesList();
+            }
           }
         }
 
@@ -1666,7 +1682,6 @@
             for (const serverLead of data.leads) {
               const existingIdx = leads.findIndex(l => (serverLead.id && l.id === serverLead.id) || l.phone === serverLead.phone);
               if (existingIdx !== -1) {
-                // If cloud has newer update (sales assigned or phone changed)
                 if (leads[existingIdx].sales !== serverLead.sales || leads[existingIdx].truck !== serverLead.truck || leads[existingIdx].phone !== serverLead.phone || leads[existingIdx].source !== serverLead.source) {
                   leads[existingIdx] = serverLead;
                   hasChanges = true;
@@ -1693,7 +1708,6 @@
         console.warn('Sync error:', e.message);
       }
     }
-
 
     // Live Logs View
     async function fetchLiveLogs() {
@@ -1755,5 +1769,3 @@
   </script>
 </body>
 </html>
-
-
