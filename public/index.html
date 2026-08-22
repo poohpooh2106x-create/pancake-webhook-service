@@ -1714,12 +1714,25 @@
                   local.name = serverLead.name;
                   hasChanges = true;
                 }
+
+                // 5. Returning Customer Timestamp: Bring to TOP of table!
+                if (serverLead.date && serverLead.time && (serverLead.date !== local.date || serverLead.time !== local.time)) {
+                  local.date = serverLead.date;
+                  local.time = serverLead.time;
+                  leads.splice(existingIdx, 1);
+                  leads.unshift(local);
+                  hasChanges = true;
+
+                  const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 4000 });
+                  Toast.fire({ icon: 'info', title: `🔔 ลูกค้าส่งเบอร์มาใหม่: ${local.name} (${local.phone})` });
+                }
               } else {
                 // New lead from PanCake or other device
                 leads.unshift(serverLead);
                 hasChanges = true;
                 scannedMessageCount++;
               }
+
             }
 
             if (leads.length > data.leads.length) {

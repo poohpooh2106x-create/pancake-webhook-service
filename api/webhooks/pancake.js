@@ -25,7 +25,7 @@ let memoryLeads = [
 let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
 const webhookLogs = [];
 const dedupeCache = new Map();
-const DEDUPE_TTL_MS = 15 * 60 * 1000;
+const DEDUPE_TTL_MS = 60 * 1000; // 1 minute dedupe for exact duplicate spam
 
 function normalizeThaiDigits(text) {
   if (!text) return '';
@@ -50,7 +50,7 @@ function cleanThaiPhoneNumber(rawPhone) {
 
 function detectTruckType(text) {
   if (!text) return 'หัวลาก';
-  const t = text.toLowerCase();
+  const t = String(text).toLowerCase();
   if (t.includes('ตู้') || t.includes('10 บาน')) return 'ตู้10';
   if (t.includes('หาง') || t.includes('ก้างปลา') || t.includes('เทรลเลอร์')) return 'หาง';
   if (t.includes('ดั๊ม') || t.includes('ดัมพ์') || t.includes('ดั้มพ์')) return 'ดั๊ม';
@@ -84,7 +84,7 @@ function getThaiDateTime() {
   return { date, time };
 }
 
-function isDuplicate(id, phone) {
+function isDuplicateSpam(id, phone) {
   const key = `${id || 'noid'}:${phone}`;
   const now = Date.now();
   for (const [k, timestamp] of dedupeCache.entries()) {
@@ -95,9 +95,24 @@ function isDuplicate(id, phone) {
   return dedupeCache.has(key);
 }
 
-function recordLead(id, phone) {
+function recordLeadDedupe(id, phone) {
   const key = `${id || 'noid'}:${phone}`;
   dedupeCache.set(key, Date.now());
+}
+
+// Deep search any string for Thai phone number
+function deepFindThaiPhone(obj) {
+  if (!obj) return null;
+  if (typeof obj === 'string') {
+    return cleanThaiPhoneNumber(obj);
+  }
+  if (typeof obj === 'object') {
+    for (const key of Object.keys(obj)) {
+      const found = deepFindThaiPhone(obj[key]);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 // Cloud Storage Helpers (Global Multi-Device Sync)
@@ -126,11 +141,14 @@ function fetchCloudData() {
 
 function saveCloudData(leadsList, truckTypesList) {
   return new Promise((resolve) => {
+    if (Array.isArray(leadsList)) memoryLeads = leadsList;
+    if (Array.isArray(truckTypesList)) memoryTruckTypes = truckTypesList;
+
     const payload = JSON.stringify({
       name: 'PancakeCRM_Leads',
       data: {
-        leads: leadsList || memoryLeads,
-        truckTypes: truckTypesList || memoryTruckTypes,
+        leads: memoryLeads,
+        truckTypes: memoryTruckTypes,
         updatedAt: new Date().toISOString()
       }
     });
@@ -142,10 +160,17 @@ function saveCloudData(leadsList, truckTypesList) {
         'Content-Length': Buffer.byteLength(payload)
       }
     }, (res) => {
-      resolve(res.statusCode === 200);
+      let resBody = '';
+      res.on('data', d => resBody += d);
+      res.on('end', () => {
+        resolve(res.statusCode >= 200 && res.statusCode < 300);
+      });
     });
 
-    req.on('error', () => resolve(false));
+    req.on('error', (err) => {
+      console.error('Cloud save error:', err.message);
+      resolve(false);
+    });
     req.write(payload);
     req.end();
   });
@@ -206,7 +231,7 @@ module.exports = async (req, res) => {
   // Parse body safely early for all methods
   let payload = req.body;
   if (typeof payload === 'string') {
-    try { payload = JSON.parse(payload); } catch(e) { payload = {}; }
+    try { payload = JSON.parse(payload); } catch(e) { payload = { raw: req.body }; }
   } else if (!payload) {
     payload = {};
   }
@@ -252,7 +277,7 @@ module.exports = async (req, res) => {
 
   const { date, time } = getThaiDateTime();
 
-
+  try {
     // Record incoming raw webhook log
     const logEntry = {
       id: 'log_' + Date.now(),
@@ -268,7 +293,7 @@ module.exports = async (req, res) => {
     // Extract leads flexibly from ANY PanCake payload format
     let itemsToProcess = [];
 
-    // Format 1: PanCake CRM fields (รองรับทั้งแบบ Object และ Array)
+    // Format 1: PanCake CRM fields (Object หรือ Array)
     const rawFields = Array.isArray(payload.fields)
       ? payload.fields
       : (payload.fields && typeof payload.fields === 'object' ? [payload.fields] : null);
@@ -327,21 +352,21 @@ module.exports = async (req, res) => {
       }];
     }
     // Format 4: PanCake Messaging event (ลูกค้าทักในแชท)
-    else if (payload.data && payload.data.message) {
-      const msg = payload.data.message;
+    else if (payload.data && (payload.data.message || payload.data.messages)) {
+      const msg = payload.data.message || (Array.isArray(payload.data.messages) ? payload.data.messages[0] : {});
       const conv = payload.data.conversation || {};
       const from = msg.from || conv.from || {};
       itemsToProcess = [{
         id: from.id || msg.conversation_id || conv.id || '',
         name: from.name || 'ลูกค้า PanCake',
-        phone: msg.message || msg.original_message || conv.snippet || '',
+        phone: msg.message || msg.original_message || msg.text || conv.snippet || '',
         source: 'FB เคพีศรีราชา',
         isRawChat: true
       }];
     }
     // Format 5: Generic Single object (อัปเดตฟิลด์เดี่ยว)
-    else if (payload.NAME || payload.PHONE || payload.phone || payload.phone_number || payload.name) {
-      let phoneVal = payload.phone || payload.phone_number || '';
+    else if (payload.NAME || payload.PHONE || payload.phone || payload.phone_number || payload.name || payload.message || payload.text) {
+      let phoneVal = payload.phone || payload.phone_number || payload.message || payload.text || '';
       if (Array.isArray(payload.PHONE) && payload.PHONE.length > 0) {
         phoneVal = payload.PHONE[0]?.VALUE || payload.PHONE[0]?.value || '';
       } else if (typeof payload.PHONE === 'string') {
@@ -354,6 +379,21 @@ module.exports = async (req, res) => {
         source: payload.source || 'FB เคพีศรีราชา',
         isUpdate: true
       }];
+    }
+
+    // Format 6: Universal Deep Scan Fallback (ดักจับเบอร์จากทุกฟิลด์ในก้อน JSON)
+    if (itemsToProcess.length === 0 || !itemsToProcess.some(i => cleanThaiPhoneNumber(i.phone))) {
+      const deepPhone = deepFindThaiPhone(payload);
+      if (deepPhone) {
+        const custName = payload.name || payload.customer_name || payload.from?.name || payload.data?.from?.name || 'ลูกค้า PanCake';
+        itemsToProcess = [{
+          id: payload.id || payload.customer_id || '',
+          name: custName,
+          phone: deepPhone,
+          source: resolveChannelSource('', req.query?.source, payload),
+          isUpdate: true
+        }];
+      }
     }
 
     if (itemsToProcess.length === 0) {
@@ -373,21 +413,21 @@ module.exports = async (req, res) => {
 
     for (const item of itemsToProcess) {
       const customerName = (item.name || 'ลูกค้า PanCake').trim();
-      const validPhone = cleanThaiPhoneNumber(item.phone);
+      const validPhone = cleanThaiPhoneNumber(item.phone) || deepFindThaiPhone(item);
 
       if (!validPhone) {
         console.log(`⚠️ No valid Thai phone found for "${customerName}" (Raw: "${item.phone}")`);
         continue;
       }
 
-      if (isDuplicate(item.id, validPhone)) {
-        console.log(`⚠️ Duplicate skipped: ${validPhone} (ID: ${item.id})`);
+      if (isDuplicateSpam(item.id, validPhone)) {
+        console.log(`⚠️ Rapid duplicate spam skipped: ${validPhone} (ID: ${item.id})`);
         continue;
       }
 
-      recordLead(item.id, validPhone);
+      recordLeadDedupe(item.id, validPhone);
 
-      const truck = detectTruckType(item.phone + ' ' + (payload.message || ''));
+      const truck = detectTruckType(item.phone + ' ' + (payload.message || '') + ' ' + JSON.stringify(payload));
       const finalSource = resolveChannelSource(item.source, req.query?.source || req.query?.channel || req.query?.page, payload);
 
       const leadObj = {
@@ -401,21 +441,27 @@ module.exports = async (req, res) => {
         sales: ''
       };
 
-      // Check if lead exists in memoryLeads to update or add
+      // Check if lead exists in memoryLeads (e.g. old customer giving number again today)
       const existingIdx = memoryLeads.findIndex(l => (leadObj.id && l.id === leadObj.id) || l.phone === leadObj.phone);
       if (existingIdx !== -1) {
-        memoryLeads[existingIdx].phone = validPhone;
-        memoryLeads[existingIdx].date = date;
-        memoryLeads[existingIdx].time = time;
-        memoryLeads[existingIdx].source = finalSource;
-        if (customerName !== 'ลูกค้า PanCake') memoryLeads[existingIdx].name = customerName;
-        if (!memoryLeads[existingIdx].truck && truck) memoryLeads[existingIdx].truck = truck;
-        leadObj.sales = memoryLeads[existingIdx].sales || '';
-        leadObj.truck = memoryLeads[existingIdx].truck || truck;
+        // Move existing lead to the TOP and refresh timestamp to TODAY & NOW!
+        const existing = memoryLeads[existingIdx];
+        existing.phone = validPhone;
+        existing.date = date;
+        existing.time = time;
+        existing.source = finalSource;
+        if (customerName !== 'ลูกค้า PanCake') existing.name = customerName;
+        if (truck && truck !== 'หัวลาก') existing.truck = truck;
+
+        leadObj.sales = existing.sales || '';
+        leadObj.truck = existing.truck || truck;
+
+        // Move to the top of memory list!
+        memoryLeads.splice(existingIdx, 1);
+        memoryLeads.unshift(existing);
       } else {
         memoryLeads.unshift(leadObj);
       }
-
 
       newLeads.push(leadObj);
 
@@ -440,7 +486,7 @@ module.exports = async (req, res) => {
       await appendToSheet(rowsToAppend);
     }
 
-    console.log(`✅ Processed ${newLeads.length} new lead(s) successfully and synced to Cloud`);
+    console.log(`✅ Processed ${newLeads.length} lead(s) successfully and synced to Cloud`);
 
     return res.status(200).json({
       success: true,
