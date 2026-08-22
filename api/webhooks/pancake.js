@@ -164,12 +164,13 @@ module.exports = async (req, res) => {
 
     console.log('📥 Received PanCake Webhook POST:', JSON.stringify(payload));
 
-    // Extract leads flexibly from ANY PanCake payload format
-    let itemsToProcess = [];
+    // Format 1: PanCake CRM fields (รองรับทั้งแบบ Object และ Array)
+    const rawFields = Array.isArray(payload.fields)
+      ? payload.fields
+      : (payload.fields && typeof payload.fields === 'object' ? [payload.fields] : null);
 
-    // Format 1: PanCake CRM fields array (การอัปเดตฟิลด์ลูกค้า)
-    if (Array.isArray(payload.fields)) {
-      itemsToProcess = payload.fields.map(f => {
+    if (rawFields && rawFields.length > 0) {
+      itemsToProcess = rawFields.map(f => {
         let phoneVal = '';
         if (Array.isArray(f.PHONE) && f.PHONE.length > 0) {
           phoneVal = f.PHONE[0]?.VALUE || f.PHONE[0]?.value || '';
@@ -187,6 +188,7 @@ module.exports = async (req, res) => {
         };
       });
     }
+
     // Format 2: PanCake CRM customer / contacts object (ลูกค้าเก่าอัปเดตข้อมูล)
     else if (payload.customer || payload.customers || payload.contact || payload.data?.customer) {
       const cust = payload.customer || payload.contact || payload.data?.customer || (Array.isArray(payload.customers) ? payload.customers[0] : payload.customers);

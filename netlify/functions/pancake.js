@@ -217,7 +217,7 @@ exports.handler = async (event, context) => {
 
     console.log('📦 Webhook Payload:', JSON.stringify(payload));
 
-    // Extract items from fields
+    // Extract items from fields (รองรับทั้ง Array และ Object)
     let fieldItems = [];
     if (Array.isArray(payload.fields)) {
       fieldItems = payload.fields;
@@ -226,6 +226,7 @@ exports.handler = async (event, context) => {
     } else if (payload.NAME || payload.PHONE) {
       fieldItems = [payload];
     }
+
 
     if (fieldItems.length === 0) {
       console.log('ℹ️ No fields array found in payload. Skipped.');
