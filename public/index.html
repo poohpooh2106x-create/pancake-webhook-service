@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- SweetAlert2 for beautiful popups -->
+  <!-- SweetAlert2 -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <style>
     :root {
@@ -178,7 +178,7 @@
       color: white;
     }
 
-    /* METRICS SECTION (4 CARDS) */
+    /* METRICS SECTION */
     .metrics-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -243,7 +243,7 @@
     .card-scanned .metric-sub { color: #a855f7; }
     .card-scanned .metric-icon { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
 
-    /* MIDDLE SECTION (3 CHARTS/CARDS) */
+    /* MIDDLE SECTION */
     .middle-grid {
       display: grid;
       grid-template-columns: 1fr 1.2fr 1fr;
@@ -589,6 +589,9 @@
         <button class="btn btn-webhook" onclick="copyWebhookUrl()">
           🔗 /api/webhooks/pancake 📋
         </button>
+        <button class="btn btn-excel" onclick="openLogsModal()" title="ดูประวัติการยิง Webhook จาก PanCake แบบ Real-time">
+          📡 ดู Log การยิง Webhook (<span id="logCountBadge">0</span>)
+        </button>
         <button class="btn btn-sim" onclick="openSimulatorModal()">
           ▷ จำลองแชทลูกค้า (Simulator)
         </button>
@@ -608,7 +611,6 @@
           🗑️
         </button>
       </div>
-
     </header>
 
     <!-- METRICS (4 CARDS) -->
@@ -828,6 +830,26 @@
     </div>
   </div>
 
+  <!-- LIVE LOGS MODAL -->
+  <div class="modal-overlay" id="logsModal">
+    <div class="modal-card" style="max-width: 700px;">
+      <div class="modal-head">
+        <div class="modal-title">📡 ประวัติการยิง Webhook จาก PanCake (Live Logs)</div>
+        <button class="btn-close" onclick="closeModal('logsModal')">&times;</button>
+      </div>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+        หน้านี้จะแสดงข้อมูลดิบ (JSON) ทุกครั้งที่ PanCake ส่ง Webhook เข้ามายังเซิร์ฟเวอร์
+      </p>
+      <div id="liveLogsContent" style="background: #090e17; border: 1px solid var(--border); border-radius: 8px; padding: 14px; max-height: 360px; overflow-y: auto; font-family: monospace; font-size: 12px; color: #38bdf8;">
+        กำลังโหลด Log ล่าสุด...
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 12px;">
+        <button class="btn btn-excel" onclick="fetchLiveLogs()">🔄 รีเฟรช Log ตอนนี้</button>
+        <button class="btn btn-trash" onclick="clearServerLogs()">🗑️ ล้างประวัติ Log</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // 8 Sales Team Members
     const SALES_TEAM = [
@@ -856,6 +878,7 @@
 
     let truckChartInstance = null;
     let salesChartInstance = null;
+    let latestServerLogs = [];
 
     // 1. Initialize IndexedDB for permanent storage
     function initIndexedDB() {
@@ -919,6 +942,9 @@
       initCharts();
       updateAll();
       showSaveIndicator('โหลดข้อมูลเรียบร้อย ✅');
+
+      // Immediate first sync with server
+      refreshLeads();
     }
 
     // 3. Save permanently to both LocalStorage and IndexedDB
@@ -950,11 +976,9 @@
       }
     }
 
-
     // Helper: Normalize Thai Phone Number
     function extractThaiPhone(text) {
       if (!text) return null;
-      // Convert Thai digits
       const thaiMap = {'๐':'0','๑':'1','๒':'2','๓':'3','๔':'4','๕':'5','๖':'6','๗':'7','๘':'8','๙':'9'};
       const norm = String(text).replace(/[๐-๙]/g, c => thaiMap[c] || c);
       const cleaned = norm.replace(/[\s\-\.\(\)\/]/g, '');
@@ -967,7 +991,6 @@
       return m ? m[0] : null;
     }
 
-    // Helper: Detect truck type from message text
     function detectTruckType(text) {
       if (!text) return 'หัวลาก';
       const t = text.toLowerCase();
@@ -977,7 +1000,6 @@
       return 'หัวลาก';
     }
 
-    // Date & Time Thai
     function getNowThai() {
       const now = new Date();
       const date = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', year: 'numeric' }).format(now);
@@ -985,7 +1007,6 @@
       return { date, time };
     }
 
-    // Render Metrics & UI
     function updateAll() {
       renderMetrics();
       renderSalesList();
@@ -1049,7 +1070,7 @@
           <tr>
             <td colspan="8" class="empty-state">
               📭 ยังไม่มีข้อมูลเคสลูกค้าที่ตรงกับเงื่อนไข<br>
-              <span style="font-size: 11px;">(ลองกดยิง 'จำลองแชทลูกค้า (Simulator)' หรือกด '+ เพิ่มเคสเอง' ได้เลยครับ)</span>
+              <span style="font-size: 11px;">(เมื่อ PanCake ส่ง Webhook เข้ามา ข้อมูลจะเด้งขึ้นตรงนี้อัตโนมัติ)</span>
             </td>
           </tr>
         `;
@@ -1176,7 +1197,7 @@
       });
     }
 
-    // Backup JSON
+    // Backup & Restore
     function backupJSON() {
       if (leads.length === 0) {
         Swal.fire('ไม่มีข้อมูล', 'ยังไม่มีข้อมูลเคสลูกค้าสำหรับสำรอง', 'info');
@@ -1192,7 +1213,6 @@
       Swal.fire('สำรองข้อมูลเรียบร้อย', 'ดาวน์โหลดไฟล์สำรองเก็บไว้ในเครื่องเรียบร้อยแล้ว', 'success');
     }
 
-    // Restore JSON
     function restoreJSON() {
       const input = document.createElement('input');
       input.type = 'file';
@@ -1221,19 +1241,15 @@
       input.click();
     }
 
-    // Export to Excel / CSV
     function exportToCSV() {
-
       if (leads.length === 0) {
         Swal.fire('ไม่มีข้อมูล', 'ยังไม่มีข้อมูลเคสลูกค้าสำหรับส่งออก', 'info');
         return;
       }
-
       let csv = '\uFEFFวันที่รับ,เวลา,ที่มา,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,เซลล์ที่รับ\n';
       leads.forEach(l => {
         csv += `"${l.date}","${l.time}","${l.source}","${l.name}","\t${l.phone}","${l.truck}","${l.sales}"\n`;
       });
-
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -1241,13 +1257,12 @@
       link.click();
     }
 
-    // Copy Webhook URL
     function copyWebhookUrl() {
       const url = window.location.origin + '/api/webhooks/pancake';
       navigator.clipboard.writeText(url).then(() => {
         Swal.fire({
           title: 'คัดลอก Webhook URL แล้ว!',
-          html: `<p style="font-size: 13px; color: #94a3b8;">นำ URL ด้านล่างไปใส่ใน <strong>PanCake Settings > Webhook</strong>:</p><br><code style="color: #38bdf8; background: #0f172a; padding: 8px 12px; border-radius: 6px;">${url}</code>`,
+          html: `<p style="font-size: 13px; color: #94a3b8;">นำ URL ด้านล่างไปใส่ใน <strong>PanCake Settings > Webhook</strong>:</p><br><code style="color: #38bdf8; background: #0f172a; padding: 8px 12px; border-radius: 6px; word-break: break-all;">${url}</code>`,
           icon: 'success',
           confirmButtonColor: '#2563eb'
         });
@@ -1256,7 +1271,6 @@
 
     // Charts
     function initCharts() {
-      // 1. Truck Proportion Donut
       const ctxTruck = document.getElementById('truckChart').getContext('2d');
       truckChartInstance = new Chart(ctxTruck, {
         type: 'doughnut',
@@ -1281,7 +1295,6 @@
         }
       });
 
-      // 2. Sales Bar Chart
       const ctxSales = document.getElementById('salesChart').getContext('2d');
       salesChartInstance = new Chart(ctxSales, {
         type: 'bar',
@@ -1297,19 +1310,10 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false }
-          },
+          plugins: { legend: { display: false } },
           scales: {
-            x: {
-              grid: { display: false },
-              ticks: { color: '#94a3b8', font: { family: 'Prompt', size: 11 } }
-            },
-            y: {
-              beginAtZero: true,
-              ticks: { color: '#64748b', stepSize: 1, font: { family: 'Prompt', size: 10 } },
-              grid: { color: 'rgba(255, 255, 255, 0.05)' }
-            }
+            x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { family: 'Prompt', size: 11 } } },
+            y: { beginAtZero: true, ticks: { color: '#64748b', stepSize: 1, font: { family: 'Prompt', size: 10 } }, grid: { color: 'rgba(255, 255, 255, 0.05)' } }
           }
         }
       });
@@ -1318,37 +1322,30 @@
     function updateCharts() {
       if (!truckChartInstance || !salesChartInstance) return;
 
-      // Update Truck Data
       const truckCounts = [
         leads.filter(l => l.truck === 'หัวลาก').length,
         leads.filter(l => l.truck === 'ตู้10').length,
         leads.filter(l => l.truck === 'หาง').length,
         leads.filter(l => l.truck === 'ดั๊ม').length
       ];
-      // Default placeholder if all 0
       const displayTruckData = truckCounts.every(v => v === 0) ? [1, 1, 1, 1] : truckCounts;
       truckChartInstance.data.datasets[0].data = displayTruckData;
       truckChartInstance.update();
 
-      // Update Sales Data
       const salesCounts = SALES_TEAM.map(s => leads.filter(l => l.sales === s.name).length);
       salesChartInstance.data.datasets[0].data = salesCounts;
       salesChartInstance.update();
     }
 
     // Modals
-    function openSimulatorModal() {
-      document.getElementById('simModal').style.display = 'flex';
+    function openSimulatorModal() { document.getElementById('simModal').style.display = 'flex'; }
+    function openAddLeadModal() { document.getElementById('addModal').style.display = 'flex'; }
+    function openLogsModal() {
+      document.getElementById('logsModal').style.display = 'flex';
+      fetchLiveLogs();
     }
-    function openAddLeadModal() {
-      document.getElementById('addModal').style.display = 'flex';
-    }
-    function closeModal(id) {
-      document.getElementById(id).style.display = 'none';
-    }
-    function setSimMsg(msg) {
-      document.getElementById('simMessage').value = msg;
-    }
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+    function setSimMsg(msg) { document.getElementById('simMessage').value = msg; }
 
     // Run Simulator
     function runSimulation() {
@@ -1366,7 +1363,6 @@
         return;
       }
 
-      // Check dup
       if (leads.some(l => l.phone === phone)) {
         Swal.fire('เบอร์โทรซ้ำ', `เบอร์ ${phone} เคยมีในระบบแล้ว ระบบป้องกันการบันทึกซ้ำ`, 'info');
         saveState();
@@ -1377,16 +1373,7 @@
       const truck = detectTruckType(msg);
       const { date, time } = getNowThai();
 
-      leads.unshift({
-        date,
-        time,
-        source,
-        name,
-        phone,
-        truck,
-        sales: ''
-      });
-
+      leads.unshift({ date, time, source, name, phone, truck, sales: '' });
       saveState();
       updateAll();
       closeModal('simModal');
@@ -1412,52 +1399,110 @@
         Swal.fire('กรุณาระบุชื่อลูกค้า', '', 'warning');
         return;
       }
-
       const phone = extractThaiPhone(rawPhone);
       if (!phone) {
         Swal.fire('เบอร์โทรไม่ถูกต้อง', 'กรุณากรอกเบอร์โทรศัพท์มือถือ 10 หลัก (เช่น 0812345678)', 'warning');
         return;
       }
-
       const { date, time } = getNowThai();
 
-      leads.unshift({
-        date,
-        time,
-        source,
-        name,
-        phone,
-        truck,
-        sales
-      });
-
+      leads.unshift({ date, time, source, name, phone, truck, sales });
       saveState();
       updateAll();
       closeModal('addModal');
 
-      // Clear inputs
       document.getElementById('addName').value = '';
       document.getElementById('addPhone').value = '';
-
       Swal.fire('บันทึกสำเร็จ', `เพิ่มเคสลูกค้า ${name} (${phone}) เรียบร้อยแล้ว`, 'success');
     }
 
-    // Auto Poll for Incoming Webhooks from Server API
+    // REAL-TIME AUTO SYNC FROM SERVER (POLLING EVERY 3 SECONDS)
     async function refreshLeads() {
       try {
         const res = await fetch('/api/webhooks/pancake');
         const data = await res.json();
-        if (data.status === 'online') {
-          // Live pulse
-          renderMetrics();
+
+        // Update Log Count badge in navbar
+        if (data.webhookLogs && Array.isArray(data.webhookLogs)) {
+          document.getElementById('logCountBadge').innerText = data.webhookLogs.length;
+          latestServerLogs = data.webhookLogs;
         }
+
+        // Pull any new leads from PanCake that arrived on server
+        if (data.recentLeads && Array.isArray(data.recentLeads) && data.recentLeads.length > 0) {
+          let hasNew = false;
+          for (const serverLead of data.recentLeads) {
+            const alreadyExists = leads.some(l => l.phone === serverLead.phone || (l.id && l.id === serverLead.id));
+            if (!alreadyExists) {
+              leads.unshift(serverLead);
+              hasNew = true;
+              scannedMessageCount++;
+
+              // Toast alert
+              const Toast = Swal.mixin({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 4000,
+                timerProgressBar: true
+              });
+              Toast.fire({
+                icon: 'success',
+                title: `🔔 ลีดใหม่จาก PanCake!\n${serverLead.name} (${serverLead.phone})`
+              });
+            }
+          }
+          if (hasNew) {
+            saveState();
+            updateAll();
+          }
+        }
+      } catch(e) {
+        console.warn('Sync error:', e.message);
+      }
+    }
+
+    // Live Logs View
+    async function fetchLiveLogs() {
+      const container = document.getElementById('liveLogsContent');
+      container.innerText = 'กำลังโหลด Log...';
+      try {
+        const res = await fetch('/api/webhooks/pancake');
+        const data = await res.json();
+        if (data.webhookLogs && data.webhookLogs.length > 0) {
+          container.innerHTML = data.webhookLogs.map((item, idx) => `
+            <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px; margin-bottom: 8px;">
+              <span style="color: #4ade80;">[#${idx+1}] ⏰ ${item.timestamp}</span><br>
+              <pre style="color: #cbd5e1; font-size: 11px; margin-top: 4px; overflow-x: auto;">${JSON.stringify(item.payload, null, 2)}</pre>
+            </div>
+          `).join('');
+        } else {
+          container.innerHTML = `
+            <div style="color: #94a3b8; text-align: center; padding: 20px;">
+              📭 ยังไม่มี Request ยิงมาจาก PanCake<br>
+              <span style="font-size: 11px; color: #64748b;">(เมื่อ PanCake มีการอัปเดตข้อมูลลูกค้า ระบบจะบันทึก Log ก้อน JSON ตรงนี้ทันที)</span>
+            </div>
+          `;
+        }
+      } catch(err) {
+        container.innerText = 'เกิดข้อผิดพลาดในการโหลด Log: ' + err.message;
+      }
+    }
+
+    async function clearServerLogs() {
+      try {
+        await fetch('/api/webhooks/pancake', { method: 'DELETE' });
+        fetchLiveLogs();
+        document.getElementById('logCountBadge').innerText = '0';
+        Swal.fire('ล้าง Log สำเร็จ', '', 'success');
       } catch(e) {}
     }
 
     // Auto init
     window.addEventListener('DOMContentLoaded', () => {
       initData();
-      setInterval(refreshLeads, 10000);
+      // Auto sync with server every 3 seconds!
+      setInterval(refreshLeads, 3000);
     });
   </script>
 </body>
