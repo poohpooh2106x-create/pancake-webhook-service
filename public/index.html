@@ -1430,33 +1430,55 @@
 
         // Pull any new leads from PanCake that arrived on server
         if (data.recentLeads && Array.isArray(data.recentLeads) && data.recentLeads.length > 0) {
-          let hasNew = false;
+          let hasChanges = false;
+          const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 4000,
+            timerProgressBar: true
+          });
+
           for (const serverLead of data.recentLeads) {
-            const alreadyExists = leads.some(l => l.phone === serverLead.phone || (l.id && l.id === serverLead.id));
-            if (!alreadyExists) {
+            // Find if customer or phone already exists
+            const existingIdx = leads.findIndex(l => (serverLead.id && l.id === serverLead.id) || l.phone === serverLead.phone);
+
+            if (existingIdx !== -1) {
+              // Customer already in table -> Check if phone was updated!
+              if (leads[existingIdx].phone !== serverLead.phone) {
+                const oldPhone = leads[existingIdx].phone;
+                leads[existingIdx].phone = serverLead.phone;
+                leads[existingIdx].date = serverLead.date;
+                leads[existingIdx].time = serverLead.time;
+                if (serverLead.name && serverLead.name !== 'ลูกค้า PanCake') {
+                  leads[existingIdx].name = serverLead.name;
+                }
+                hasChanges = true;
+
+                Toast.fire({
+                  icon: 'info',
+                  title: `🔄 ลูกค้าอัปเดตเบอร์ใหม่!\n${leads[existingIdx].name}: ${oldPhone} ➔ ${serverLead.phone}`
+                });
+              }
+            } else {
+              // Brand new lead
               leads.unshift(serverLead);
-              hasNew = true;
+              hasChanges = true;
               scannedMessageCount++;
 
-              // Toast alert
-              const Toast = Swal.mixin({
-                toast: true,
-                position: 'top-end',
-                showConfirmButton: false,
-                timer: 4000,
-                timerProgressBar: true
-              });
               Toast.fire({
                 icon: 'success',
                 title: `🔔 ลีดใหม่จาก PanCake!\n${serverLead.name} (${serverLead.phone})`
               });
             }
           }
-          if (hasNew) {
+
+          if (hasChanges) {
             saveState();
             updateAll();
           }
         }
+
       } catch(e) {
         console.warn('Sync error:', e.message);
       }

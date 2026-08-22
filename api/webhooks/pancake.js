@@ -167,47 +167,90 @@ module.exports = async (req, res) => {
     // Extract leads flexibly from ANY PanCake payload format
     let itemsToProcess = [];
 
-    // Format 1: PanCake CRM fields array
+    // Format 1: PanCake CRM fields array (การอัปเดตฟิลด์ลูกค้า)
     if (Array.isArray(payload.fields)) {
-      itemsToProcess = payload.fields.map(f => ({
-        id: f.id || '',
-        name: f.NAME || f.name || '',
-        phone: (Array.isArray(f.PHONE) && f.PHONE[0]?.VALUE) || f.PHONE || f.phone || '',
-        source: 'FB เคพีศรีราชา'
-      }));
+      itemsToProcess = payload.fields.map(f => {
+        let phoneVal = '';
+        if (Array.isArray(f.PHONE) && f.PHONE.length > 0) {
+          phoneVal = f.PHONE[0]?.VALUE || f.PHONE[0]?.value || '';
+        } else if (typeof f.PHONE === 'string') {
+          phoneVal = f.PHONE;
+        } else if (f.phone || f.phone_number) {
+          phoneVal = f.phone || f.phone_number;
+        }
+        return {
+          id: f.id || f.customer_id || '',
+          name: f.NAME || f.name || f.customer_name || 'ลูกค้า PanCake',
+          phone: phoneVal,
+          source: f.source || 'FB เคพีศรีราชา',
+          isUpdate: true
+        };
+      });
     }
-    // Format 2: PanCake CRM customer object
-    else if (payload.customer || payload.customers) {
-      const cust = payload.customer || (Array.isArray(payload.customers) ? payload.customers[0] : payload.customers);
+    // Format 2: PanCake CRM customer / contacts object (ลูกค้าเก่าอัปเดตข้อมูล)
+    else if (payload.customer || payload.customers || payload.contact || payload.data?.customer) {
+      const cust = payload.customer || payload.contact || payload.data?.customer || (Array.isArray(payload.customers) ? payload.customers[0] : payload.customers);
+      let phoneVal = '';
+      if (Array.isArray(cust.phone_numbers) && cust.phone_numbers.length > 0) {
+        phoneVal = cust.phone_numbers[0]?.number || cust.phone_numbers[0]?.phone || cust.phone_numbers[0];
+      } else if (cust.phone_number || cust.phone) {
+        phoneVal = cust.phone_number || cust.phone;
+      }
+
       itemsToProcess = [{
-        id: cust.id || '',
-        name: cust.name || cust.customer_name || '',
-        phone: (Array.isArray(cust.phone_numbers) ? cust.phone_numbers[0] : cust.phone_numbers) || cust.phone_number || cust.phone || '',
-        source: cust.source || 'FB เคพีศรีราชา'
+        id: cust.id || cust.page_customer_id || '',
+        name: cust.name || cust.customer_name || cust.full_name || 'ลูกค้า PanCake',
+        phone: phoneVal,
+        source: cust.source || cust.page_name || 'FB เคพีศรีราชา',
+        isUpdate: true
       }];
     }
-    // Format 3: PanCake Messaging event (แชท)
+    // Format 3: Direct Data payload (PanCake webhook v2)
+    else if (payload.data && (payload.data.phone_numbers || payload.data.phone || payload.data.phone_number || payload.data.name)) {
+      const d = payload.data;
+      let phoneVal = d.phone || d.phone_number || '';
+      if (Array.isArray(d.phone_numbers) && d.phone_numbers.length > 0) {
+        phoneVal = d.phone_numbers[0]?.number || d.phone_numbers[0]?.phone || d.phone_numbers[0];
+      }
+
+      itemsToProcess = [{
+        id: d.id || payload.id || '',
+        name: d.name || d.customer_name || 'ลูกค้า PanCake',
+        phone: phoneVal,
+        source: d.source || 'FB เคพีศรีราชา',
+        isUpdate: true
+      }];
+    }
+    // Format 4: PanCake Messaging event (ลูกค้าทักในแชท)
     else if (payload.data && payload.data.message) {
       const msg = payload.data.message;
       const conv = payload.data.conversation || {};
       const from = msg.from || conv.from || {};
       itemsToProcess = [{
-        id: msg.id || conv.id || '',
+        id: from.id || msg.conversation_id || conv.id || '',
         name: from.name || 'ลูกค้า PanCake',
         phone: msg.message || msg.original_message || conv.snippet || '',
         source: 'FB เคพีศรีราชา',
         isRawChat: true
       }];
     }
-    // Format 4: Single object
-    else if (payload.NAME || payload.PHONE || payload.phone || payload.name) {
+    // Format 5: Generic Single object (อัปเดตฟิลด์เดี่ยว)
+    else if (payload.NAME || payload.PHONE || payload.phone || payload.phone_number || payload.name) {
+      let phoneVal = payload.phone || payload.phone_number || '';
+      if (Array.isArray(payload.PHONE) && payload.PHONE.length > 0) {
+        phoneVal = payload.PHONE[0]?.VALUE || payload.PHONE[0]?.value || '';
+      } else if (typeof payload.PHONE === 'string') {
+        phoneVal = payload.PHONE;
+      }
       itemsToProcess = [{
         id: payload.id || '',
-        name: payload.NAME || payload.name || '',
-        phone: (Array.isArray(payload.PHONE) && payload.PHONE[0]?.VALUE) || payload.PHONE || payload.phone || '',
-        source: payload.source || 'FB เคพีศรีราชา'
+        name: payload.NAME || payload.name || payload.customer_name || 'ลูกค้า PanCake',
+        phone: phoneVal,
+        source: payload.source || 'FB เคพีศรีราชา',
+        isUpdate: true
       }];
     }
+
 
     if (itemsToProcess.length === 0) {
       console.log('ℹ️ No customer/phone items detected in payload');
