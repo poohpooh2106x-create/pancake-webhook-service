@@ -1093,11 +1093,12 @@
       refreshLeads();
     }
 
-    // 3. Save permanently to both LocalStorage and IndexedDB
-    function saveState() {
+    // Save permanently to Cloud Database, LocalStorage, and IndexedDB
+    async function saveState(syncToCloud = true) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(leads));
         localStorage.setItem(SCANNED_KEY, scannedMessageCount);
+        localStorage.setItem(TRUCKS_STORAGE_KEY, JSON.stringify(truckTypes));
       } catch(e) {
         console.error('LocalStorage save error:', e);
       }
@@ -1110,9 +1111,19 @@
         } catch(e) {}
       }
 
-      showSaveIndicator('บันทึกข้อมูลถาวรแล้ว 💾');
-    }
+      showSaveIndicator('บันทึกข้อมูลถาวร & ซิงค์คลาวด์แล้ว ☁️');
 
+      // Sync to Universal Cloud Database across all devices
+      if (syncToCloud) {
+        try {
+          fetch('/api/webhooks/pancake?action=sync_state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ leads, truckTypes })
+          });
+        } catch(e) {}
+      }
+    }
 
     function showSaveIndicator(text) {
       const el = document.getElementById('saveIndicator');
@@ -1144,6 +1155,7 @@
       if (t.includes('ตู้') || t.includes('10 บาน')) return 'ตู้10';
       if (t.includes('หาง') || t.includes('ก้างปลา') || t.includes('เทรลเลอร์')) return 'หาง';
       if (t.includes('ดั๊ม') || t.includes('ดัมพ์') || t.includes('ดั้มพ์')) return 'ดั๊ม';
+      if (t.includes('6 ล้อ') || t.includes('หกล้อ')) return '6 ล้อ';
       return 'หัวลาก';
     }
 
@@ -1286,8 +1298,6 @@
         renderTable();
       }
     }
-
-
 
     function updateLeadTruck(idx, val) {
       if (leads[idx]) {
@@ -1510,7 +1520,6 @@
       salesChartInstance.update();
     }
 
-
     // Modals
     function openSimulatorModal() { document.getElementById('simModal').style.display = 'flex'; }
     function openAddLeadModal() { document.getElementById('addModal').style.display = 'flex'; }
@@ -1590,7 +1599,7 @@
       Swal.fire('บันทึกสำเร็จ', `เพิ่มเคสลูกค้า ${name} (${phone}) เรียบร้อยแล้ว`, 'success');
     }
 
-    // REAL-TIME AUTO SYNC FROM SERVER (POLLING EVERY 3 SECONDS)
+    // REAL-TIME AUTO SYNC FROM CLOUD DATABASE (POLLING EVERY 3 SECONDS)
     async function refreshLeads() {
       try {
         const res = await fetch('/api/webhooks/pancake');
@@ -1602,57 +1611,46 @@
           latestServerLogs = data.webhookLogs;
         }
 
-        // Pull any new leads from PanCake that arrived on server
-        if (data.recentLeads && Array.isArray(data.recentLeads) && data.recentLeads.length > 0) {
+        // Sync custom truck types from cloud
+        if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
+          if (JSON.stringify(truckTypes) !== JSON.stringify(data.truckTypes)) {
+            truckTypes = data.truckTypes;
+            populateTruckSelectInputs();
+            renderTruckTypesList();
+          }
+        }
+
+        // Sync all leads from cloud across all devices
+        if (Array.isArray(data.leads) && data.leads.length > 0) {
           let hasChanges = false;
-          const Toast = Swal.mixin({
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: false,
-            timer: 4000,
-            timerProgressBar: true
-          });
 
-          for (const serverLead of data.recentLeads) {
-            // Find if customer or phone already exists
-            const existingIdx = leads.findIndex(l => (serverLead.id && l.id === serverLead.id) || l.phone === serverLead.phone);
-
-            if (existingIdx !== -1) {
-              // Customer already in table -> Check if phone was updated!
-              if (leads[existingIdx].phone !== serverLead.phone) {
-                const oldPhone = leads[existingIdx].phone;
-                leads[existingIdx].phone = serverLead.phone;
-                leads[existingIdx].date = serverLead.date;
-                leads[existingIdx].time = serverLead.time;
-                if (serverLead.name && serverLead.name !== 'ลูกค้า PanCake') {
-                  leads[existingIdx].name = serverLead.name;
+          // If local leads is empty (new device / fresh browser), populate all from cloud!
+          if (leads.length === 0) {
+            leads = data.leads;
+            hasChanges = true;
+          } else {
+            // Check for new leads or updates from other devices/PanCake
+            for (const serverLead of data.leads) {
+              const existingIdx = leads.findIndex(l => (serverLead.id && l.id === serverLead.id) || l.phone === serverLead.phone);
+              if (existingIdx !== -1) {
+                // If cloud has newer update (sales assigned or phone changed)
+                if (leads[existingIdx].sales !== serverLead.sales || leads[existingIdx].truck !== serverLead.truck || leads[existingIdx].phone !== serverLead.phone || leads[existingIdx].source !== serverLead.source) {
+                  leads[existingIdx] = serverLead;
+                  hasChanges = true;
                 }
+              } else {
+                leads.unshift(serverLead);
                 hasChanges = true;
-
-                Toast.fire({
-                  icon: 'info',
-                  title: `🔄 ลูกค้าอัปเดตเบอร์ใหม่!\n${leads[existingIdx].name}: ${oldPhone} ➔ ${serverLead.phone}`
-                });
+                scannedMessageCount++;
               }
-            } else {
-              // Brand new lead
-              leads.unshift(serverLead);
-              hasChanges = true;
-              scannedMessageCount++;
-
-              Toast.fire({
-                icon: 'success',
-                title: `🔔 ลีดใหม่จาก PanCake!\n${serverLead.name} (${serverLead.phone})`
-              });
             }
           }
 
           if (hasChanges) {
-            saveState();
+            saveState(false); // Save locally without echoing back to cloud
             updateAll();
           }
         }
-
       } catch(e) {
         console.warn('Sync error:', e.message);
       }
@@ -1697,9 +1695,10 @@
     // Auto init
     window.addEventListener('DOMContentLoaded', () => {
       initData();
-      // Auto sync with server every 3 seconds!
+      // Auto sync with cloud database every 3 seconds!
       setInterval(refreshLeads, 3000);
     });
   </script>
 </body>
 </html>
+

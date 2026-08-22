@@ -1,11 +1,28 @@
 /**
- * Vercel Serverless Function: PanCake Webhook Handler with Server Sync & Live Logs
+ * Vercel Serverless Function: PanCake Webhook Handler with Multi-Device Cloud Sync & Live Logs
  * Endpoint: /api/webhooks/pancake
  */
 const { google } = require('googleapis');
+const https = require('https');
 
-// Server-side in-memory store for recent leads & raw webhook logs
-const recentLeads = [];
+// Dedicated Cloud Storage ID for Multi-Device Global Sync
+const CLOUD_OBJECT_ID = 'ff8081819ff5b11001a027ca21547381';
+const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
+
+// Local Memory Cache
+let memoryLeads = [
+  {
+    id: 'lead_1',
+    date: '22/08/2026',
+    time: '11:28:05',
+    source: 'FB เคพีศรีราชา',
+    name: 'ประกายฟ้า สานนอก',
+    phone: '0997316431',
+    truck: 'หัวลาก',
+    sales: 'ท็อป'
+  }
+];
+let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
 const webhookLogs = [];
 const dedupeCache = new Map();
 const DEDUPE_TTL_MS = 15 * 60 * 1000;
@@ -37,6 +54,7 @@ function detectTruckType(text) {
   if (t.includes('ตู้') || t.includes('10 บาน')) return 'ตู้10';
   if (t.includes('หาง') || t.includes('ก้างปลา') || t.includes('เทรลเลอร์')) return 'หาง';
   if (t.includes('ดั๊ม') || t.includes('ดัมพ์') || t.includes('ดั้มพ์')) return 'ดั๊ม';
+  if (t.includes('6 ล้อ') || t.includes('หกล้อ')) return '6 ล้อ';
   return 'หัวลาก';
 }
 
@@ -51,16 +69,13 @@ function resolveChannelSource(rawSource, querySource, payload) {
   if (candidate.toLowerCase().includes('tiktok')) return 'TikTok';
   if (candidate.toLowerCase().includes('loa') || candidate.toLowerCase().includes('line')) return 'LOA เคพี';
 
-  // If candidate is a raw ID (like -1,1645218189058372)
   if (!candidate || /^[-0-9,\s_]+$/.test(candidate)) {
     return 'FB เคพีศรีราชา';
   }
-
   return candidate;
 }
 
 function getThaiDateTime() {
-
   const now = new Date();
   const optionsDate = { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', year: 'numeric' };
   const optionsTime = { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
@@ -83,6 +98,57 @@ function isDuplicate(id, phone) {
 function recordLead(id, phone) {
   const key = `${id || 'noid'}:${phone}`;
   dedupeCache.set(key, Date.now());
+}
+
+// Cloud Storage Helpers (Global Multi-Device Sync)
+function fetchCloudData() {
+  return new Promise((resolve) => {
+    https.get(CLOUD_API_URL, (res) => {
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(body);
+          if (json.data && Array.isArray(json.data.leads)) {
+            memoryLeads = json.data.leads;
+            if (Array.isArray(json.data.truckTypes)) {
+              memoryTruckTypes = json.data.truckTypes;
+            }
+            resolve(json.data);
+            return;
+          }
+        } catch(e) {}
+        resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes });
+      });
+    }).on('error', () => resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes }));
+  });
+}
+
+function saveCloudData(leadsList, truckTypesList) {
+  return new Promise((resolve) => {
+    const payload = JSON.stringify({
+      name: 'PancakeCRM_Leads',
+      data: {
+        leads: leadsList || memoryLeads,
+        truckTypes: truckTypesList || memoryTruckTypes,
+        updatedAt: new Date().toISOString()
+      }
+    });
+
+    const req = https.request(CLOUD_API_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      }
+    }, (res) => {
+      resolve(res.statusCode === 200);
+    });
+
+    req.on('error', () => resolve(false));
+    req.write(payload);
+    req.end();
+  });
 }
 
 async function getSheetsClient() {
@@ -131,29 +197,39 @@ module.exports = async (req, res) => {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Pancake-Secret');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).json({ message: 'OK' });
   }
 
-  // GET: Return server status, live leads & logs to frontend dashboard
+  // GET: Return global cloud leads, truck types & logs to frontend dashboard
   if (req.method === 'GET') {
+    await fetchCloudData();
     return res.status(200).json({
       status: 'online',
       platform: 'vercel',
       endpoint: '/api/webhooks/pancake',
       serverTime: new Date().toISOString(),
-      recentLeads: recentLeads.slice(0, 50),
+      leads: memoryLeads,
+      recentLeads: memoryLeads.slice(0, 50),
+      truckTypes: memoryTruckTypes,
       webhookLogs: webhookLogs.slice(0, 50),
       totalReceived: webhookLogs.length,
-      totalLeads: recentLeads.length
+      totalLeads: memoryLeads.length
     });
+  }
+
+  // PUT / POST with sync action: Save state from frontend (user assigned sales or added truck)
+  if (req.query?.action === 'sync_state' || req.body?.action === 'sync_state') {
+    if (Array.isArray(req.body?.leads)) memoryLeads = req.body.leads;
+    if (Array.isArray(req.body?.truckTypes)) memoryTruckTypes = req.body.truckTypes;
+    await saveCloudData(memoryLeads, memoryTruckTypes);
+    return res.status(200).json({ success: true, message: 'Cloud state synced successfully' });
   }
 
   // DELETE: Clear server logs if requested
   if (req.method === 'DELETE') {
-    recentLeads.length = 0;
     webhookLogs.length = 0;
     return res.status(200).json({ success: true, message: 'Server logs cleared' });
   }
@@ -184,6 +260,9 @@ module.exports = async (req, res) => {
 
     console.log('📥 Received PanCake Webhook POST:', JSON.stringify(payload));
 
+    // Extract leads flexibly from ANY PanCake payload format
+    let itemsToProcess = [];
+
     // Format 1: PanCake CRM fields (รองรับทั้งแบบ Object และ Array)
     const rawFields = Array.isArray(payload.fields)
       ? payload.fields
@@ -208,7 +287,6 @@ module.exports = async (req, res) => {
         };
       });
     }
-
     // Format 2: PanCake CRM customer / contacts object (ลูกค้าเก่าอัปเดตข้อมูล)
     else if (payload.customer || payload.customers || payload.contact || payload.data?.customer) {
       const cust = payload.customer || payload.contact || payload.data?.customer || (Array.isArray(payload.customers) ? payload.customers[0] : payload.customers);
@@ -273,7 +351,6 @@ module.exports = async (req, res) => {
       }];
     }
 
-
     if (itemsToProcess.length === 0) {
       console.log('ℹ️ No customer/phone items detected in payload');
       return res.status(200).json({
@@ -282,6 +359,9 @@ module.exports = async (req, res) => {
         receivedPayload: payload
       });
     }
+
+    // Fetch latest cloud leads first
+    await fetchCloudData();
 
     const rowsToAppend = [];
     const newLeads = [];
@@ -316,9 +396,17 @@ module.exports = async (req, res) => {
         sales: ''
       };
 
-      // Add to server memory list so frontend polling gets it immediately!
-      recentLeads.unshift(leadObj);
-      if (recentLeads.length > 200) recentLeads.pop();
+      // Check if lead exists in memoryLeads to update or add
+      const existingIdx = memoryLeads.findIndex(l => (leadObj.id && l.id === leadObj.id) || l.phone === leadObj.phone);
+      if (existingIdx !== -1) {
+        memoryLeads[existingIdx].phone = validPhone;
+        memoryLeads[existingIdx].date = date;
+        memoryLeads[existingIdx].time = time;
+        memoryLeads[existingIdx].source = finalSource;
+        if (customerName !== 'ลูกค้า PanCake') memoryLeads[existingIdx].name = customerName;
+      } else {
+        memoryLeads.unshift(leadObj);
+      }
 
       newLeads.push(leadObj);
 
@@ -331,7 +419,11 @@ module.exports = async (req, res) => {
         truck,
         '', '', '', '', '', '', ''
       ]);
+    }
 
+    // Save updated leads to Cloud Database immediately!
+    if (newLeads.length > 0) {
+      await saveCloudData(memoryLeads, memoryTruckTypes);
     }
 
     // If Google Sheets is configured, also append to Sheets
@@ -339,12 +431,13 @@ module.exports = async (req, res) => {
       await appendToSheet(rowsToAppend);
     }
 
-    console.log(`✅ Processed ${newLeads.length} new lead(s) successfully`);
+    console.log(`✅ Processed ${newLeads.length} new lead(s) successfully and synced to Cloud`);
 
     return res.status(200).json({
       success: true,
       message: `Processed ${newLeads.length} lead(s)`,
-      leads: newLeads,
+      leads: memoryLeads,
+      recentLeads: newLeads,
       serverTime: `${date} ${time}`
     });
 
