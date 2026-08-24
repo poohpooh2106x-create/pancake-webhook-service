@@ -595,6 +595,9 @@
         <button class="btn btn-webhook admin-only" onclick="copyWebhookUrl()">
           🔗 /api/webhooks/pancake 📋
         </button>
+        <button class="btn btn-excel admin-only" onclick="openChannelManageModal()" title="เพิ่ม/แก้ไขช่องทางที่ลูกค้าให้เบอร์ (Page / Channel)">
+          📱 จัดการช่องทาง
+        </button>
         <button class="btn btn-excel admin-only" onclick="openTruckManageModal()" title="เพิ่ม/แก้ไขประเภทรถที่ลูกค้าสนใจ">
           ⚙️ จัดการประเภทรถ
         </button>
@@ -708,12 +711,8 @@
           📊 ตารางรับเคสลูกค้า (เฉพาะคนที่มีเบอร์โทร)
         </div>
 
-        <div class="filter-tabs">
+        <div class="filter-tabs" id="channelFilterTabs">
           <button class="tab-btn active" onclick="setChannelFilter('ทั้งหมด', this)">ทั้งหมด</button>
-          <button class="tab-btn" onclick="setChannelFilter('FB เคพีศรีราชา', this)">FB เคพีศรีราชา</button>
-          <button class="tab-btn" onclick="setChannelFilter('TikTok', this)">TikTok</button>
-          <button class="tab-btn" onclick="setChannelFilter('LOA เคพี', this)">LOA เคพี</button>
-          <button class="tab-btn" onclick="setChannelFilter('FB เฮียตั้มรถติด', this)">FB เฮียตั้มรถติด</button>
         </div>
 
         <div class="table-search-box">
@@ -746,6 +745,35 @@
 
       </div>
     </section>
+  </div>
+
+  <!-- MANAGE CHANNELS MODAL -->
+  <div class="modal-overlay" id="channelModal">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-head">
+        <div class="modal-title">📱 จัดการช่องทางที่ลูกค้าให้เบอร์ (Channel / Page)</div>
+        <button class="btn-close" onclick="closeModal('channelModal')">&times;</button>
+      </div>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+        คุณสามารถพิมพ์ชื่อช่องทางหรือเพจที่ลูกค้าให้เบอร์ (เช่น FB เคพีศรีราชา, TikTok, LOA เคพี, FB เพจสำรอง, หน้าร้าน) แล้วกด Enter หรือกดปุ่มเพิ่มได้เลยครับ
+      </p>
+
+      <!-- Add New Input -->
+      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+        <input type="text" class="form-input" id="newChannelInput" placeholder="พิมพ์ชื่อช่องทาง เช่น FB เพจสำรอง, หน้าร้าน..." onkeydown="if(event.key==='Enter') addChannelSource()">
+        <button class="btn btn-add" style="white-space: nowrap;" onclick="addChannelSource()">+ เพิ่ม</button>
+      </div>
+
+      <!-- Current List -->
+      <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #f1f5f9;">รายการช่องทางปัจจุบัน:</div>
+      <div id="channelSourcesList" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
+        <!-- Populated by JS -->
+      </div>
+
+      <div style="margin-top: 16px; text-align: right;">
+        <button class="btn btn-excel" onclick="closeModal('channelModal')">ปิดหน้าต่าง</button>
+      </div>
+    </div>
   </div>
 
   <!-- MANAGE TRUCK TYPES MODAL -->
@@ -1159,6 +1187,137 @@
       }
     }
 
+    // CHANNEL SOURCES (Customizable & Bulletproof Persistence)
+    const DEFAULT_CHANNELS = ['FB เคพีศรีราชา', 'TikTok', 'LOA เคพี', 'FB เฮียตั้มรถติด', 'อื่นๆ'];
+    const CHANNELS_STORAGE_KEY = 'pancake_channel_sources_v1';
+    let channelSources = [...DEFAULT_CHANNELS];
+
+    function loadChannelSources() {
+      const saved = localStorage.getItem(CHANNELS_STORAGE_KEY) || localStorage.getItem('pancake_channel_sources_master');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            channelSources = [...parsed];
+            populateChannelInputs();
+            renderChannelFilterTabs();
+            return;
+          }
+        } catch(e) {}
+      }
+      channelSources = [...DEFAULT_CHANNELS];
+      populateChannelInputs();
+      renderChannelFilterTabs();
+    }
+
+    function saveChannelSources() {
+      try {
+        localStorage.setItem(CHANNELS_STORAGE_KEY, JSON.stringify(channelSources));
+        localStorage.setItem('pancake_channel_sources_master', JSON.stringify(channelSources));
+        localStorage.setItem('pancake_channels_user_customized', 'true');
+      } catch(e) {}
+
+      populateChannelInputs();
+      renderChannelFilterTabs();
+      renderChannelTypesList();
+      renderTable();
+
+      try {
+        fetchWithAuth('/api/webhooks/pancake?action=sync_channels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channelSources }),
+          keepalive: true
+        });
+      } catch(e) {}
+
+      saveState(true);
+    }
+
+    function openChannelManageModal() {
+      renderChannelTypesList();
+      const modal = document.getElementById('channelModal');
+      if (modal) {
+        modal.style.display = 'flex';
+        setTimeout(() => {
+          const inp = document.getElementById('newChannelInput');
+          if (inp) inp.focus();
+        }, 50);
+      }
+    }
+
+    function renderChannelTypesList() {
+      const list = document.getElementById('channelSourcesList');
+      if (!list) return;
+      list.innerHTML = channelSources.map((c, idx) => `
+        <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; transition: all 0.2s;">
+          <span style="font-weight: 500; font-size: 13px; color: #f8fafc;">📱 ${c}</span>
+          <button style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #f87171; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'" onclick="removeChannelSource(${idx})" title="ลบช่องทางนี้">
+            ลบ
+          </button>
+        </div>
+      `).join('');
+    }
+
+    function addChannelSource() {
+      const input = document.getElementById('newChannelInput');
+      if (!input) return;
+      const val = input.value.trim();
+      if (!val) {
+        input.focus();
+        return;
+      }
+      if (channelSources.some(c => c.toLowerCase() === val.toLowerCase())) {
+        Swal.fire({ title: 'มีช่องทางนี้อยู่แล้ว', icon: 'info', timer: 1000, showConfirmButton: false });
+        input.focus();
+        return;
+      }
+      channelSources.push(val);
+      input.value = '';
+      saveChannelSources();
+      input.focus();
+
+      const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+      Toast.fire({ icon: 'success', title: `เพิ่มช่องทาง "${val}" เรียบร้อยแล้ว` });
+    }
+
+    function removeChannelSource(idx) {
+      if (channelSources.length <= 1) {
+        Swal.fire({ title: 'ไม่สามารถลบได้', text: 'ต้องมีช่องทางอย่างน้อย 1 รายการ', icon: 'warning' });
+        return;
+      }
+      const name = channelSources.splice(idx, 1)[0];
+      saveChannelSources();
+
+      const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+      Toast.fire({ icon: 'info', title: `ลบช่องทาง "${name}" แล้ว` });
+    }
+
+    function populateChannelInputs() {
+      const simSelect = document.getElementById('simSource');
+      if (simSelect) {
+        const cur = simSelect.value;
+        simSelect.innerHTML = channelSources.map(c => `<option value="${c}">${c}</option>`).join('');
+        if (cur && channelSources.includes(cur)) simSelect.value = cur;
+      }
+      const addSelect = document.getElementById('addSource');
+      if (addSelect) {
+        const cur = addSelect.value;
+        addSelect.innerHTML = channelSources.map(c => `<option value="${c}">${c}</option>`).join('');
+        if (cur && channelSources.includes(cur)) addSelect.value = cur;
+      }
+    }
+
+    function renderChannelFilterTabs() {
+      const tabs = document.getElementById('channelFilterTabs');
+      if (!tabs) return;
+      let html = `<button class="tab-btn ${currentFilter === 'ทั้งหมด' ? 'active' : ''}" onclick="setChannelFilter('ทั้งหมด', this)">ทั้งหมด</button>`;
+      channelSources.forEach(c => {
+        html += `<button class="tab-btn ${currentFilter === c ? 'active' : ''}" onclick="setChannelFilter('${c}', this)">${c}</button>`;
+      });
+      tabs.innerHTML = html;
+    }
+
 
     // 1. Initialize IndexedDB for permanent storage
     function initIndexedDB() {
@@ -1460,6 +1619,7 @@
     // 2. Multi-Layer Non-Destructive Storage Loader with Blacklist Enforcement
     async function initData() {
       loadTruckTypes();
+      loadChannelSources();
       await initIndexedDB();
       initCharts();
 
@@ -1580,6 +1740,13 @@
               populateTruckSelectInputs();
             }
           }
+          if (Array.isArray(data.channelSources) && data.channelSources.length > 0) {
+            if (!localStorage.getItem(CHANNELS_STORAGE_KEY)) {
+              channelSources = [...data.channelSources];
+              populateChannelInputs();
+              renderChannelFilterTabs();
+            }
+          }
 
           if (data.webhookLogs && Array.isArray(data.webhookLogs)) {
             document.getElementById('logCountBadge').innerText = data.webhookLogs.length;
@@ -1612,6 +1779,7 @@
         localStorage.setItem('pancake_sales_leads_v3', json);
         localStorage.setItem(SCANNED_KEY, scannedMessageCount);
         localStorage.setItem(TRUCKS_STORAGE_KEY, JSON.stringify(truckTypes));
+        localStorage.setItem(CHANNELS_STORAGE_KEY, JSON.stringify(channelSources));
       } catch(e) {
         console.error('LocalStorage save error:', e);
       }
@@ -1637,7 +1805,7 @@
           fetchWithAuth('/api/webhooks/pancake?action=sync_state', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ leads, truckTypes, deletedIds })
+            body: JSON.stringify({ leads, truckTypes, channelSources, deletedIds })
           });
         } catch(e) {}
       }
@@ -1769,7 +1937,7 @@
         fetchWithAuth('/api/webhooks/pancake?action=sync_state', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ leads, truckTypes, lead })
+          body: JSON.stringify({ leads, truckTypes, channelSources, lead })
         });
       } catch(e) {}
     }
@@ -1844,10 +2012,12 @@
         if (lead.truck && !leadTruckList.includes(lead.truck)) {
           leadTruckList.unshift(lead.truck);
         }
-        const truckOptionsHtml = leadTruckList.map(t => `<option value="${t}" ${lead.truck === t ? 'selected' : ''}>${t}</option>`).join('');
-        const CHANNELS = ['FB เคพีศรีราชา', 'FB เฮียตั้มรถติด', 'TikTok', 'LOA เคพี', 'อื่นๆ'];
+        let leadChannelList = [...channelSources];
         const currentSource = sanitizeChannelName(lead.source);
-        const channelOptionsHtml = CHANNELS.map(c => `<option value="${c}" ${currentSource === c ? 'selected' : ''}>${c}</option>`).join('');
+        if (currentSource && !leadChannelList.includes(currentSource)) {
+          leadChannelList.unshift(currentSource);
+        }
+        const channelOptionsHtml = leadChannelList.map(c => `<option value="${c}" ${currentSource === c ? 'selected' : ''}>${c}</option>`).join('');
 
         return `
           <tr>
@@ -1921,8 +2091,12 @@
     }
 
     function sanitizeChannelName(source) {
-      if (!source) return 'FB เคพีศรีราชา';
+      if (!source) return (channelSources && channelSources[0]) || 'FB เคพีศรีราชา';
       const s = String(source).trim();
+      if (Array.isArray(channelSources)) {
+        const found = channelSources.find(c => c && c.toLowerCase() === s.toLowerCase());
+        if (found) return found;
+      }
       if (s.includes('เฮียตั้ม') || s.toLowerCase().includes('tum')) return 'FB เฮียตั้มรถติด';
       if (s.includes('เคพี') || s.toLowerCase().includes('kp')) return 'FB เคพีศรีราชา';
       if (s.toLowerCase().includes('tiktok')) return 'TikTok';

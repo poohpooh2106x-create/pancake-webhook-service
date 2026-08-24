@@ -12,6 +12,7 @@ const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 // Local Memory Cache (Loaded dynamically from Cloud Database via fetchCloudData)
 let memoryLeads = [];
 let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'เครน'];
+let memoryChannels = ['FB เคพีศรีราชา', 'TikTok', 'LOA เคพี', 'FB เฮียตั้มรถติด', 'อื่นๆ'];
 let memoryDeletedIds = [];
 let webhookLogs = [];
 const dedupeCache = new Map();
@@ -162,7 +163,6 @@ function detectTruckType(text) {
   return '';
 }
 
-
 function resolveChannelSource(rawSource, querySource, payload) {
   if (querySource && typeof querySource === 'string' && querySource.trim()) {
     return querySource.trim();
@@ -172,12 +172,18 @@ function resolveChannelSource(rawSource, querySource, payload) {
   const raw = Array.isArray(rawSource) ? rawSource.join(',') : String(rawSource || pName || '');
   const candidate = raw.trim();
 
+  // Match against dynamic custom channel list
+  if (Array.isArray(memoryChannels)) {
+    const matched = memoryChannels.find(c => c && candidate.toLowerCase() === c.toLowerCase());
+    if (matched) return matched;
+  }
+
   if (candidate.includes('เฮียตั้ม') || candidate.toLowerCase().includes('tum')) return 'FB เฮียตั้มรถติด';
   if (candidate.includes('เคพี') || candidate.toLowerCase().includes('kp')) return 'FB เคพีศรีราชา';
   if (candidate.toLowerCase().includes('tiktok')) return 'TikTok';
   if (candidate.toLowerCase().includes('loa') || candidate.toLowerCase().includes('line')) return 'LOA เคพี';
 
-  return 'FB เคพีศรีราชา';
+  return candidate || 'FB เคพีศรีราชา';
 }
 
 function getThaiDateTime() {
@@ -203,8 +209,8 @@ function isDuplicateSpam(id, phone) {
 
 function recordLeadDedupe(id, phone) {
   if (!phone) return;
-  const key = `${id || 'noid'}:${phone}`;
   const now = Date.now();
+  const key = `${id || 'noid'}:${phone}`;
   dedupeCache.set(key, now);
   dedupeCache.set(`phone:${phone}`, now);
 }
@@ -307,6 +313,9 @@ function fetchCloudData() {
             if (Array.isArray(json.data.truckTypes) && json.data.truckTypes.length > 0) {
               memoryTruckTypes = json.data.truckTypes;
             }
+            if (Array.isArray(json.data.channels) && json.data.channels.length > 0) {
+              memoryChannels = json.data.channels;
+            }
             if (Array.isArray(json.data.deletedIds)) {
               memoryDeletedIds = json.data.deletedIds;
             }
@@ -321,9 +330,9 @@ function fetchCloudData() {
             return;
           }
         } catch(e) {}
-        resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, deletedIds: memoryDeletedIds, logs: webhookLogs });
+        resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, channels: memoryChannels, deletedIds: memoryDeletedIds, logs: webhookLogs });
       });
-    }).on('error', () => resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, deletedIds: memoryDeletedIds, logs: webhookLogs }));
+    }).on('error', () => resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, channels: memoryChannels, deletedIds: memoryDeletedIds, logs: webhookLogs }));
   });
 }
 
@@ -356,10 +365,11 @@ async function syncToGoogleSheets(data) {
   }
 }
 
-function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList) {
+function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList, channelsList) {
   return new Promise((resolve) => {
     if (Array.isArray(leadsList)) memoryLeads = sortLeadsByDate(leadsList);
     if (Array.isArray(truckTypesList)) memoryTruckTypes = truckTypesList;
+    if (Array.isArray(channelsList)) memoryChannels = channelsList;
     if (Array.isArray(logsList)) webhookLogs = logsList;
     if (Array.isArray(deletedIdsList)) memoryDeletedIds = deletedIdsList;
 
@@ -374,6 +384,7 @@ function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList) {
       data: {
         leads: memoryLeads,
         truckTypes: memoryTruckTypes,
+        channels: memoryChannels,
         deletedIds: memoryDeletedIds.slice(-500),
         logs: webhookLogs.slice(0, 30),
         updatedAt: new Date().toISOString()
@@ -708,6 +719,8 @@ module.exports = async (req, res) => {
       leads: memoryLeads,
       recentLeads: memoryLeads.slice(0, 50),
       truckTypes: memoryTruckTypes,
+      channelSources: memoryChannels,
+      channels: memoryChannels,
       deletedIds: memoryDeletedIds,
       webhookLogs: webhookLogs.slice(0, 50),
       securityAuditLogs: effectiveRole === 'admin' ? securityAuditLogs.slice(0, 30) : [],
@@ -742,7 +755,7 @@ module.exports = async (req, res) => {
     } else if (delPhone || delId) {
       memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
     }
-    await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
+    await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
     recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'delete_lead_success');
     return res.status(200).json({ success: true, message: 'Lead deleted permanently', totalLeads: memoryLeads.length, deletedIds: memoryDeletedIds });
   }
@@ -751,9 +764,18 @@ module.exports = async (req, res) => {
   if (action === 'sync_trucks') {
     if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) {
       memoryTruckTypes = payload.truckTypes;
-      await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
+      await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
       recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_truck_types');
       return res.status(200).json({ success: true, message: 'Truck types updated', truckTypes: memoryTruckTypes });
+    }
+  }
+
+  if (action === 'sync_channels') {
+    if (Array.isArray(payload?.channelSources) && payload.channelSources.length > 0) {
+      memoryChannels = payload.channelSources;
+      await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
+      recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_channel_sources');
+      return res.status(200).json({ success: true, message: 'Channel sources updated', channelSources: memoryChannels });
     }
   }
 
@@ -763,6 +785,10 @@ module.exports = async (req, res) => {
       for (const d of payload.deletedIds) {
         if (d && !memoryDeletedIds.includes(d)) memoryDeletedIds.push(d);
       }
+    }
+
+    if (Array.isArray(payload?.channelSources) && payload.channelSources.length > 0) {
+      memoryChannels = payload.channelSources;
     }
 
     // RBAC: Role-Based Access Control
@@ -785,7 +811,7 @@ module.exports = async (req, res) => {
           await syncToGoogleSheets(payload.lead);
         }
       }
-      await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
+      await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
       recordAuditLog(req, clientIp, authUser.role, 200, 'sync_sales_report');
       return res.status(200).json({ success: true, message: 'Sales report updated', role: 'sales', deletedIds: memoryDeletedIds });
     }
@@ -808,7 +834,7 @@ module.exports = async (req, res) => {
       }
     }
     if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) memoryTruckTypes = payload.truckTypes;
-    await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
+    await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
 
     recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_admin_state');
     return res.status(200).json({ 

@@ -236,7 +236,25 @@ async function runAllTests() {
     console.log('✅ Test 10 Passed: Cloud Blacklist blocks resurrection of deleted leads');
   }
 
-  console.log('\n🎉 ALL 10 TESTS PASSED SUCCESSFULLY! The codebase is robust, clean, and ready.\n');
+  // Test 11: Sync Custom Channel Sources
+  {
+    const customChannels = ['FB เคพีศรีราชา', 'TikTok', 'LOA เคพี', 'FB เฮียตั้มรถติด', 'FB เพจสำรอง', 'หน้าร้าน'];
+    const { req, res, resData } = createMockReqRes({
+      method: 'POST',
+      query: { action: 'sync_channels' },
+      headers: { 'x-pancake-secret': 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e' },
+      body: {
+        channelSources: customChannels
+      }
+    });
+    await pancakeHandler(req, res);
+    assert.strictEqual(resData.statusCode, 200);
+    assert.strictEqual(resData.body.success, true);
+    assert.deepStrictEqual(resData.body.channelSources, customChannels);
+    console.log('✅ Test 11 Passed: Custom channel sources dynamic sync & persistence');
+  }
+
+  console.log('\n🎉 ALL 11 TESTS PASSED SUCCESSFULLY! The codebase is robust, clean, and ready.\n');
 }
 
 runAllTests().catch((err) => {
