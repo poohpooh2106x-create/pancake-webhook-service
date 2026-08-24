@@ -371,6 +371,21 @@ function authenticateUser(req) {
   return { authenticated: false, role: null };
 }
 
+async function getRawBody(req) {
+  if (req.body && typeof req.body === 'object') return req.body;
+  if (typeof req.body === 'string') {
+    try { return JSON.parse(req.body); } catch(e) { return { raw: req.body }; }
+  }
+  return new Promise((resolve) => {
+    let data = '';
+    req.on('data', chunk => { data += chunk; });
+    req.on('end', () => {
+      try { resolve(JSON.parse(data || '{}')); } catch(e) { resolve({ raw: data }); }
+    });
+    req.on('error', () => resolve({}));
+  });
+}
+
 module.exports = async (req, res) => {
   // CORS with credentials support (httpOnly Cookie)
   const reqOrigin = req.headers.origin;
@@ -407,18 +422,14 @@ module.exports = async (req, res) => {
   }
 
   // Parse body safely
-  let payload = req.body;
-  if (typeof payload === 'string') {
-    try { payload = JSON.parse(payload); } catch(e) { payload = { raw: req.body }; }
-  } else if (!payload) {
-    payload = {};
-  }
+  let payload = await getRawBody(req);
+  if (!payload || typeof payload !== 'object') payload = {};
 
   const action = req.query?.action || payload?.action || '';
 
   // ACTION: LOGIN (Set httpOnly Cookie)
   if (action === 'login' && req.method === 'POST') {
-    const inputToken = (payload?.token || req.query?.secret || req.query?.token || '').trim();
+    const inputToken = (payload?.token || req.query?.secret || req.query?.token || req.headers['x-pancake-secret'] || '').trim();
     if (inputToken === ADMIN_SECRET_TOKEN) {
       res.setHeader('Set-Cookie', `crm_session=${encodeURIComponent(inputToken)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`);
       recordAuditLog(req, clientIp, 'admin', 200, 'login_success');
@@ -443,6 +454,7 @@ module.exports = async (req, res) => {
       });
     }
   }
+
 
   // ACTION: LOGOUT (Clear httpOnly Cookie)
   if (action === 'logout') {
