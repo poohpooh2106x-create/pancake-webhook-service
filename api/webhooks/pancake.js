@@ -23,8 +23,9 @@ let memoryLeads = [
   }
 ];
 let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
-const webhookLogs = [];
+let webhookLogs = [];
 const dedupeCache = new Map();
+
 const DEDUPE_TTL_MS = 60 * 1000; // 1 minute dedupe for exact duplicate spam
 
 function normalizeThaiDigits(text) {
