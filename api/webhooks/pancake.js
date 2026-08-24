@@ -426,6 +426,7 @@ module.exports = async (req, res) => {
   if (!payload || typeof payload !== 'object') payload = {};
 
   const action = req.query?.action || payload?.action || '';
+  const authUser = authenticateUser(req);
 
   // ACTION: LOGIN (Set httpOnly Cookie)
   if (action === 'login' && req.method === 'POST') {
