@@ -9,57 +9,8 @@ const https = require('https');
 const CLOUD_OBJECT_ID = 'ff8081819ff5b11001a027ca21547381';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 
-// Local Memory Cache (Master Persistent Default)
-let memoryLeads = [
-  {
-    id: "570f8dab-320b-4488-8fa0-1bdd5bfcf473",
-    date: "24/08/2026",
-    time: "10:17:13",
-    source: "FB เคพีศรีราชา",
-    ad: "[ AI EXPERT ADS ] - รถตัด และ คลิปแรกเจ...",
-    name: "Theeraphat Nuhoung",
-    phone: "0963577542",
-    truck: "ตู้10",
-    sales: "เฟิร์น",
-    report: ""
-  },
-  {
-    id: "lead_supharat_1",
-    date: "24/08/2026",
-    time: "10:01:53",
-    source: "FB เคพีศรีราชา",
-    ad: "",
-    name: "ศุภรัตน์ นาคพงศ์",
-    phone: "0653189838",
-    truck: "ตู้10",
-    sales: "เฟิร์น",
-    report: ""
-  },
-  {
-    id: "6f1a5c38-345e-4a76-a0a0-e2b9b26bc0f0",
-    date: "24/08/2026",
-    time: "09:25:04",
-    source: "FB เคพีศรีราชา",
-    ad: "",
-    name: "Ome Boonyai",
-    phone: "0828758814",
-    truck: "หัวลาก",
-    sales: "จิ๊บ",
-    report: ""
-  },
-  {
-    id: "lead_samart_1",
-    date: "24/08/2026",
-    time: "09:11:09",
-    source: "FB เคพีศรีราชา",
-    ad: "",
-    name: "สามารถ ศรีนามล",
-    phone: "0650271577",
-    truck: "คอก",
-    sales: "เกด",
-    report: ""
-  }
-];
+// Local Memory Cache (Loaded dynamically from Cloud Database via fetchCloudData)
+let memoryLeads = [];
 let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'เครน'];
 let webhookLogs = [];
 const dedupeCache = new Map();
