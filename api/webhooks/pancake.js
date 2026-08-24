@@ -9,22 +9,169 @@ const https = require('https');
 const CLOUD_OBJECT_ID = 'ff8081819ff5b11001a027ca21547381';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 
-// Local Memory Cache
+// Local Memory Cache (Master Persistent Default)
 let memoryLeads = [
   {
-    id: 'lead_1',
-    date: '22/08/2026',
-    time: '11:28:05',
-    source: 'FB เคพีศรีราชา',
-    name: 'ประกายฟ้า สานนอก',
-    phone: '0997316431',
-    truck: 'หัวลาก',
-    sales: 'ท็อป'
+    id: "570f8dab-320b-4488-8fa0-1bdd5bfcf473",
+    date: "24/08/2026",
+    time: "10:17:13",
+    source: "FB เคพีศรีราชา",
+    ad: "[ AI EXPERT ADS ] - รถตัด และ คลิปแรกเจ...",
+    name: "Theeraphat Nuhoung",
+    phone: "0963577542",
+    truck: "ตู้10",
+    sales: "เฟิร์น",
+    report: ""
+  },
+  {
+    id: "lead_supharat_1",
+    date: "24/08/2026",
+    time: "10:01:53",
+    source: "FB เคพีศรีราชา",
+    ad: "",
+    name: "ศุภรัตน์ นาคพงศ์",
+    phone: "0653189838",
+    truck: "ตู้10",
+    sales: "เฟิร์น",
+    report: ""
+  },
+  {
+    id: "6f1a5c38-345e-4a76-a0a0-e2b9b26bc0f0",
+    date: "24/08/2026",
+    time: "09:25:04",
+    source: "FB เคพีศรีราชา",
+    ad: "",
+    name: "Ome Boonyai",
+    phone: "0828758814",
+    truck: "หัวลาก",
+    sales: "จิ๊บ",
+    report: ""
+  },
+  {
+    id: "lead_samart_1",
+    date: "24/08/2026",
+    time: "09:11:09",
+    source: "FB เคพีศรีราชา",
+    ad: "",
+    name: "สามารถ ศรีนามล",
+    phone: "0650271577",
+    truck: "คอก",
+    sales: "เกด",
+    report: ""
+  },
+  {
+    id: "aa72c07e-17a8-421a-8e76-178ee1615f38",
+    date: "22/08/2026",
+    time: "11:49:27",
+    source: "FB เคพีศรีราชา",
+    name: "ประกายฟ้า สานนอก",
+    phone: "0997316431",
+    truck: "หัวลาก",
+    sales: "ท็อป",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "8f19e779-220f-4bfe-b872-c5503c8a4b3b",
+    date: "22/08/2026",
+    time: "11:49:15",
+    source: "FB เคพีศรีราชา",
+    name: "ชีวิตคือ การเดินทาง",
+    phone: "0988918611",
+    truck: "หัวลาก",
+    sales: "เกด",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "fdf3b193-d090-40c4-9827-9c5ad9e5c01e",
+    date: "22/08/2026",
+    time: "11:44:19",
+    source: "FB เคพีศรีราชา",
+    name: "Supattana Wongkom",
+    phone: "0961917277",
+    truck: "เครน",
+    sales: "เกด",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_sawai_1",
+    date: "22/08/2026",
+    time: "16:02:48",
+    source: "FB เคพีศรีราชา",
+    name: "Sawai Sinoun",
+    phone: "0817251742",
+    truck: "หัวลาก",
+    sales: "วุธ",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "920b0522-936d-4506-b293-81e43c858f74",
+    date: "22/08/2026",
+    time: "16:21:18",
+    source: "FB เคพีศรีราชา",
+    name: "นาย อำนวยชัย",
+    phone: "0865401249",
+    truck: "หัวลาก",
+    sales: "",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "28b09f25-1f33-473d-b5e3-ad645aea1e2f",
+    date: "22/08/2026",
+    time: "16:21:40",
+    source: "FB เคพีศรีราชา",
+    name: "ณัฐพงษ์ บุญวงศ์",
+    phone: "0897402202",
+    truck: "หัวลาก",
+    sales: "",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_prakaifah_2",
+    date: "22/08/2026",
+    time: "11:48:25",
+    source: "FB เคพีศรีราชา",
+    name: "ประกายฟ้า สานนอก",
+    phone: "0997316432",
+    truck: "หัวลาก",
+    sales: "",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_sathaporn_1",
+    date: "22/08/2026",
+    time: "11:20:10",
+    source: "FB เคพีศรีราชา",
+    name: "Sathaporn Piyaboonpanya",
+    phone: "0840957477",
+    truck: "หัวลาก",
+    sales: "",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_chili_1",
+    date: "22/08/2026",
+    time: "11:15:30",
+    source: "FB เคพีศรีราชา",
+    name: "chili(เมร์)",
+    phone: "0930189287",
+    truck: "หัวลาก",
+    sales: "",
+    ad: "",
+    report: ""
   }
 ];
-let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
+let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'เครน'];
 let webhookLogs = [];
 const dedupeCache = new Map();
+
 
 const DEDUPE_TTL_MS = 60 * 1000; // 1 minute dedupe for exact duplicate spam
 
@@ -219,9 +366,9 @@ function fetchCloudData() {
       res.on('end', () => {
         try {
           const json = JSON.parse(body);
-          if (json.data && Array.isArray(json.data.leads)) {
+          if (json.data && Array.isArray(json.data.leads) && json.data.leads.length >= memoryLeads.length) {
             memoryLeads = json.data.leads;
-            if (Array.isArray(json.data.truckTypes)) {
+            if (Array.isArray(json.data.truckTypes) && json.data.truckTypes.length > 0) {
               memoryTruckTypes = json.data.truckTypes;
             }
             if (Array.isArray(json.data.logs)) {
@@ -236,6 +383,7 @@ function fetchCloudData() {
     }).on('error', () => resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, logs: webhookLogs }));
   });
 }
+
 
 const GOOGLE_SHEETS_SCRIPT_URL = process.env.GOOGLE_SHEETS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzUdIU62Fx5-OS9Ldjx54O_HU5NJtt-C5RoFrF0k1OECVeTnFlyirdEheX6b88e8rBXmw/exec';
 
