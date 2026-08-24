@@ -58,6 +58,22 @@ function cleanThaiPhoneNumber(rawPhone) {
   return null;
 }
 
+function isBlacklistedLead(lead, blacklist) {
+  if (!lead || !Array.isArray(blacklist) || blacklist.length === 0) return false;
+  const leadPhone = lead.phone ? String(lead.phone).trim() : '';
+  const cleanPhone = cleanThaiPhoneNumber(leadPhone) || leadPhone.replace(/[\s\-\.\/]/g, '');
+  const leadId = lead.id ? String(lead.id).trim() : '';
+
+  for (const item of blacklist) {
+    if (!item) continue;
+    const str = String(item).trim();
+    if (leadId && (str === leadId || str.toLowerCase() === leadId.toLowerCase())) return true;
+    if (leadPhone && (str === leadPhone || str.replace(/[\s\-\.\/]/g, '') === cleanPhone)) return true;
+    if (cleanPhone && (str === cleanPhone || cleanThaiPhoneNumber(str) === cleanPhone)) return true;
+  }
+  return false;
+}
+
 /**
  * Universal Recursive Deep Scan Helper for Thai Phone Numbers in any JSON structure
  */
@@ -624,6 +640,12 @@ module.exports = async (req, res) => {
     await fetchCloudData();
     const effectiveRole = authUser.role || 'admin';
     recordAuditLog(req, clientIp, effectiveRole, 200, 'read_leads');
+
+    // Ensure memoryLeads does not contain any blacklisted leads before returning
+    if (memoryDeletedIds.length > 0) {
+      memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
+    }
+
     return res.status(200).json({
       status: 'online',
       platform: 'vercel',
@@ -650,7 +672,11 @@ module.exports = async (req, res) => {
     const delPhone = payload?.phone;
     const delId = payload?.id;
 
-    if (delPhone && !memoryDeletedIds.includes(delPhone)) memoryDeletedIds.push(delPhone);
+    if (delPhone) {
+      if (!memoryDeletedIds.includes(delPhone)) memoryDeletedIds.push(delPhone);
+      const cleanP = cleanThaiPhoneNumber(delPhone);
+      if (cleanP && !memoryDeletedIds.includes(cleanP)) memoryDeletedIds.push(cleanP);
+    }
     if (delId && !memoryDeletedIds.includes(delId)) memoryDeletedIds.push(delId);
     if (Array.isArray(payload?.deletedIds)) {
       for (const d of payload.deletedIds) {
@@ -659,9 +685,9 @@ module.exports = async (req, res) => {
     }
 
     if (Array.isArray(payload?.leads)) {
-      memoryLeads = payload.leads.filter(l => !memoryDeletedIds.includes(l.phone) && (!l.id || !memoryDeletedIds.includes(l.id)));
+      memoryLeads = payload.leads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
     } else if (delPhone || delId) {
-      memoryLeads = memoryLeads.filter(l => (!delId || l.id !== delId) && (!delPhone || l.phone !== delPhone));
+      memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
     }
     await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
     recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'delete_lead_success');
@@ -711,7 +737,7 @@ module.exports = async (req, res) => {
 
     // Admin has full control - filter against blacklist
     if (Array.isArray(payload?.leads)) {
-      memoryLeads = payload.leads.filter(l => !memoryDeletedIds.includes(l.phone) && (!l.id || !memoryDeletedIds.includes(l.id)));
+      memoryLeads = payload.leads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
     }
     if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) memoryTruckTypes = payload.truckTypes;
     await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
