@@ -1058,27 +1058,108 @@
       });
     }
 
-    // 2. Load directly from Single Master Cloud Server
+    // 2. Multi-Layer Non-Destructive Storage Loader (กู้คืนและผสานข้อมูลทุกเลเยอร์ ไม่มีวันหาย 100%)
     async function initData() {
       loadTruckTypes();
+      await initIndexedDB();
       initCharts();
 
-      showSaveIndicator('กำลังซิงค์กับเซิร์ฟเวอร์กลาง... 🔄');
+      showSaveIndicator('กำลังกู้คืนและผสานข้อมูลทั้งหมด... 🔄');
 
-      // Fetch absolute single source of truth from Cloud Server immediately
+      const masterMap = new Map();
+
+      // Step A: Load from all historical LocalStorage keys
+      const historicalKeys = [
+        MASTER_LEADS_KEY,
+        BACKUP_LEADS_KEY,
+        'pancake_sales_leads_v3',
+        'pancake_sales_leads_v2',
+        'pancake_sales_leads_v1',
+        'pancake_sales_leads'
+      ];
+
+      for (const k of historicalKeys) {
+        const item = localStorage.getItem(k);
+        if (item) {
+          try {
+            const arr = JSON.parse(item);
+            if (Array.isArray(arr)) {
+              arr.forEach(l => {
+                const key = l.phone || l.id;
+                if (key && !masterMap.has(key)) {
+                  masterMap.set(key, {
+                    ...l,
+                    source: sanitizeChannelName(l.source),
+                    truck: l.truck || 'หัวลาก',
+                    sales: l.sales || '',
+                    ad: l.ad || ''
+                  });
+                }
+              });
+            }
+          } catch(e) {}
+        }
+      }
+
+      // Step B: Load from IndexedDB
+      if (db) {
+        try {
+          await new Promise((resolve) => {
+            const tx = db.transaction(DB_STORE, 'readonly');
+            const store = tx.objectStore(DB_STORE);
+            const req = store.get('all_leads');
+            req.onsuccess = () => {
+              if (req.result && Array.isArray(req.result.data)) {
+                req.result.data.forEach(l => {
+                  const key = l.phone || l.id;
+                  if (key && !masterMap.has(key)) {
+                    masterMap.set(key, {
+                      ...l,
+                      source: sanitizeChannelName(l.source),
+                      truck: l.truck || 'หัวลาก',
+                      sales: l.sales || '',
+                      ad: l.ad || ''
+                    });
+                  }
+                });
+              }
+              resolve();
+            };
+            req.onerror = () => resolve();
+          });
+        } catch(e) {}
+      }
+
+      // Step C: Fetch and merge with Cloud Database
       try {
         const res = await fetch('/api/webhooks/pancake');
         const data = await res.json();
         if (Array.isArray(data.leads)) {
-          leads = data.leads.map(l => ({
-            ...l,
-            source: sanitizeChannelName(l.source),
-            truck: l.truck || 'หัวลาก',
-            sales: l.sales || ''
-          }));
+          data.leads.forEach(serverLead => {
+            const key = serverLead.phone || serverLead.id;
+            if (key) {
+              if (masterMap.has(key)) {
+                // Merge fields intelligently: keep local sales if server is empty
+                const existing = masterMap.get(key);
+                if (!existing.sales && serverLead.sales) existing.sales = serverLead.sales;
+                if (!existing.truck && serverLead.truck) existing.truck = serverLead.truck;
+                if (!existing.ad && serverLead.ad) existing.ad = serverLead.ad;
+                if (serverLead.source) existing.source = sanitizeChannelName(serverLead.source);
+                masterMap.set(key, existing);
+              } else {
+                masterMap.set(key, {
+                  ...serverLead,
+                  source: sanitizeChannelName(serverLead.source),
+                  truck: serverLead.truck || 'หัวลาก',
+                  sales: serverLead.sales || '',
+                  ad: serverLead.ad || ''
+                });
+              }
+            }
+          });
         }
         if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
-          truckTypes = data.truckTypes;
+          truckTypes = Array.from(new Set([...truckTypes, ...data.truckTypes]));
           populateTruckSelectInputs();
         }
         if (data.webhookLogs && Array.isArray(data.webhookLogs)) {
@@ -1086,17 +1167,20 @@
           latestServerLogs = data.webhookLogs;
         }
       } catch(e) {
-        // Fallback to local storage if offline
-        const saved = localStorage.getItem(MASTER_LEADS_KEY);
-        if (saved) {
-          try { leads = JSON.parse(saved); } catch(err) {}
-        }
+        console.warn('Could not fetch cloud data, using local master cache:', e);
       }
 
+      // Finalize leads array with complete merged data
+      leads = Array.from(masterMap.values());
       scannedMessageCount = leads.length;
+
+      // Save complete merged state to all layers & sync back to cloud!
+      saveState(true);
       updateAll();
-      showSaveIndicator('เชื่อมต่อเซิร์ฟเวอร์กลางเรียบร้อย ✅');
+      showSaveIndicator('กู้คืนและผสานข้อมูลทั้งหมดเรียบร้อยแล้ว ✅');
     }
+
+
 
 
     // Save permanently to all layers (Master Key, Backup Key, IndexedDB, Cloud Store)
