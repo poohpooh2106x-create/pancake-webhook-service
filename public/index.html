@@ -1045,82 +1045,46 @@
       });
     }
 
-    // 2. Load from all storage sources & merge without losing anything
+    // 2. Load directly from Single Master Cloud Server
     async function initData() {
       loadTruckTypes();
-      await initIndexedDB();
+      initCharts();
 
-      const loadedMap = new Map();
+      showSaveIndicator('กำลังซิงค์กับเซิร์ฟเวอร์กลาง... 🔄');
 
-      // Scan all historical LocalStorage keys to merge any previous data!
-      const historicalKeys = [
-        MASTER_LEADS_KEY,
-        BACKUP_LEADS_KEY,
-        'pancake_sales_leads_v3',
-        'pancake_sales_leads_v2',
-        'pancake_sales_leads_v1',
-        'pancake_sales_leads'
-      ];
-
-      for (const k of historicalKeys) {
-        const item = localStorage.getItem(k);
-        if (item) {
-          try {
-            const arr = JSON.parse(item);
-            if (Array.isArray(arr)) {
-              arr.forEach(l => {
-                const key = l.phone || l.id;
-                if (key && !loadedMap.has(key)) {
-                  loadedMap.set(key, l);
-                }
-              });
-            }
-          } catch(e) {}
+      // Fetch absolute single source of truth from Cloud Server immediately
+      try {
+        const res = await fetch('/api/webhooks/pancake');
+        const data = await res.json();
+        if (Array.isArray(data.leads)) {
+          leads = data.leads.map(l => ({
+            ...l,
+            source: sanitizeChannelName(l.source),
+            truck: l.truck || 'หัวลาก',
+            sales: l.sales || ''
+          }));
+        }
+        if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
+          truckTypes = data.truckTypes;
+          populateTruckSelectInputs();
+        }
+        if (data.webhookLogs && Array.isArray(data.webhookLogs)) {
+          document.getElementById('logCountBadge').innerText = data.webhookLogs.length;
+          latestServerLogs = data.webhookLogs;
+        }
+      } catch(e) {
+        // Fallback to local storage if offline
+        const saved = localStorage.getItem(MASTER_LEADS_KEY);
+        if (saved) {
+          try { leads = JSON.parse(saved); } catch(err) {}
         }
       }
 
-      // Also read IndexedDB backup
-      if (db) {
-        try {
-          const tx = db.transaction(DB_STORE, 'readonly');
-          const store = tx.objectStore(DB_STORE);
-          const req = store.get('all_leads');
-          req.onsuccess = () => {
-            if (req.result && Array.isArray(req.result.data)) {
-              req.result.data.forEach(l => {
-                const key = l.phone || l.id;
-                if (key && !loadedMap.has(key)) {
-                  loadedMap.set(key, l);
-                }
-              });
-              if (loadedMap.size > 0) {
-                leads = Array.from(loadedMap.values());
-                saveState(false);
-                updateAll();
-              }
-            }
-          };
-        } catch(e) {}
-      }
-
-      if (loadedMap.size > 0) {
-        leads = Array.from(loadedMap.values());
-      }
-
-      const savedScanned = localStorage.getItem(SCANNED_KEY);
-      if (savedScanned) {
-        scannedMessageCount = parseInt(savedScanned, 10) || leads.length;
-      } else {
-        scannedMessageCount = leads.length;
-      }
-
-      initCharts();
+      scannedMessageCount = leads.length;
       updateAll();
-      showSaveIndicator('โหลดข้อมูลพร้อมใช้งาน ✅');
-
-      // Immediate first sync with server & cloud
-      refreshLeads();
+      showSaveIndicator('เชื่อมต่อเซิร์ฟเวอร์กลางเรียบร้อย ✅');
     }
+
 
     // Save permanently to all layers (Master Key, Backup Key, IndexedDB, Cloud Store)
     async function saveState(syncToCloud = true) {
@@ -1258,8 +1222,9 @@
 
       let filtered = leads;
       if (currentFilter !== 'ทั้งหมด') {
-        filtered = filtered.filter(l => l.source === currentFilter);
+        filtered = filtered.filter(l => sanitizeChannelName(l.source) === currentFilter);
       }
+
       if (query) {
         filtered = filtered.filter(l => 
           (l.name && l.name.toLowerCase().includes(query)) ||

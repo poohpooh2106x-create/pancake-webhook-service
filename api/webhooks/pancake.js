@@ -67,29 +67,59 @@ function cleanThaiPhoneNumber(rawPhone) {
   return null;
 }
 
-const IGNORED_FIELDS = new Set([
-  'modified_on', 'created_on', 'created_at', 'updated_at', 'date', 'time', 'timestamp',
-  'id', 'uuid', 'conversation_id', 'page_id', 'psid', 'fb_id', 'customer_id', 'user_id',
-  'account_id', 'workspace_id', 'headers', 'url', 'avatar', 'link', 'photo_url'
-]);
+function detectTruckType(text) {
+  if (!text) return 'หัวลาก';
+  const t = String(text).toLowerCase();
+  if (t.includes('ตู้') || t.includes('10 บาน')) return 'ตู้10';
+  if (t.includes('หาง') || t.includes('ก้างปลา') || t.includes('เทรลเลอร์')) return 'หาง';
+  if (t.includes('ดั๊ม') || t.includes('ดัมพ์') || t.includes('ดั้มพ์')) return 'ดั๊ม';
+  if (t.includes('6 ล้อ') || t.includes('หกล้อ')) return '6 ล้อ';
+  if (t.includes('เครน')) return 'เครน';
+  return 'หัวลาก';
+}
 
-// Deep search text fields for Thai mobile phone number
-function deepFindThaiPhone(obj, parentKey = '') {
-  if (!obj) return null;
-  if (IGNORED_FIELDS.has(parentKey.toLowerCase())) return null;
-
-  if (typeof obj === 'string') {
-    return cleanThaiPhoneNumber(obj);
+function resolveChannelSource(rawSource, querySource, payload) {
+  if (querySource && typeof querySource === 'string' && querySource.trim()) {
+    return querySource.trim();
   }
-  if (typeof obj === 'object') {
-    for (const key of Object.keys(obj)) {
-      if (IGNORED_FIELDS.has(key.toLowerCase())) continue;
-      const found = deepFindThaiPhone(obj[key], key);
-      if (found) return found;
+  
+  const pName = payload?.page_name || payload?.page?.name || payload?.data?.page_name || '';
+  const raw = Array.isArray(rawSource) ? rawSource.join(',') : String(rawSource || pName || '');
+  const candidate = raw.trim();
+
+  if (candidate.includes('เฮียตั้ม') || candidate.toLowerCase().includes('tum')) return 'FB เฮียตั้มรถติด';
+  if (candidate.includes('เคพี') || candidate.toLowerCase().includes('kp')) return 'FB เคพีศรีราชา';
+  if (candidate.toLowerCase().includes('tiktok')) return 'TikTok';
+  if (candidate.toLowerCase().includes('loa') || candidate.toLowerCase().includes('line')) return 'LOA เคพี';
+
+  return 'FB เคพีศรีราชา';
+}
+
+function getThaiDateTime() {
+  const now = new Date();
+  const optionsDate = { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', year: 'numeric' };
+  const optionsTime = { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+  const date = new Intl.DateTimeFormat('en-GB', optionsDate).format(now);
+  const time = new Intl.DateTimeFormat('en-GB', optionsTime).format(now);
+  return { date, time };
+}
+
+function isDuplicateSpam(id, phone) {
+  const key = `${id || 'noid'}:${phone}`;
+  const now = Date.now();
+  for (const [k, timestamp] of dedupeCache.entries()) {
+    if (now - timestamp > DEDUPE_TTL_MS) {
+      dedupeCache.delete(k);
     }
   }
-  return null;
+  return dedupeCache.has(key);
 }
+
+function recordLeadDedupe(id, phone) {
+  const key = `${id || 'noid'}:${phone}`;
+  dedupeCache.set(key, Date.now());
+}
+
 
 
 // Cloud Storage Helpers (Global Multi-Device Sync & Persistent Logs)
