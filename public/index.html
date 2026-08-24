@@ -1015,8 +1015,32 @@
     const TRUCKS_STORAGE_KEY = 'pancake_truck_types_v5';
     let truckTypes = [...DEFAULT_TRUCKS];
 
+    // STATE & BULLETPROOF PERSISTENCE ENGINE
+    const MASTER_LEADS_KEY = 'pancake_crm_master_leads';
+    const BACKUP_LEADS_KEY = 'pancake_crm_permanent_backup';
+    const SCANNED_KEY = 'pancake_scanned_count_v3';
+    const DB_NAME = 'PancakeCRM_DB';
+    const DB_STORE = 'leads_store';
+
+    let leads = [];
+    let scannedMessageCount = 0;
+    let currentFilter = 'ทั้งหมด';
+    let db = null;
+
+    let truckChartInstance = null;
+    let salesChartInstance = null;
+    let latestServerLogs = [];
+
+    // TRUCK COLORS PALETTE FOR CHART
+    const CHART_COLORS = [
+      '#f97316', '#3b82f6', '#10b981', '#a855f7', 
+      '#06b6d4', '#ec4899', '#eab308', '#6366f1', 
+      '#14b8a6', '#f43f5e', '#84cc16', '#8b5cf6'
+    ];
+
     // Load Truck Types (Direct user list, NEVER re-merges deleted trucks)
     function loadTruckTypes() {
+
       const saved = localStorage.getItem(TRUCKS_STORAGE_KEY) || localStorage.getItem('pancake_truck_types_master');
       if (saved) {
         try {
