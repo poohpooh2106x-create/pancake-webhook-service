@@ -12,6 +12,7 @@ const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 // Local Memory Cache (Loaded dynamically from Cloud Database via fetchCloudData)
 let memoryLeads = [];
 let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'เครน'];
+let memoryDeletedIds = [];
 let webhookLogs = [];
 const dedupeCache = new Map();
 
@@ -239,20 +240,25 @@ function fetchCloudData() {
             if (Array.isArray(json.data.truckTypes) && json.data.truckTypes.length > 0) {
               memoryTruckTypes = json.data.truckTypes;
             }
+            if (Array.isArray(json.data.deletedIds)) {
+              memoryDeletedIds = json.data.deletedIds;
+            }
             if (Array.isArray(json.data.logs)) {
               webhookLogs = json.data.logs;
+            }
+            // Filter out any blacklisted deleted leads
+            if (memoryDeletedIds.length > 0) {
+              memoryLeads = memoryLeads.filter(l => !memoryDeletedIds.includes(l.phone) && (!l.id || !memoryDeletedIds.includes(l.id)));
             }
             resolve(json.data);
             return;
           }
         } catch(e) {}
-        resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, logs: webhookLogs });
+        resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, deletedIds: memoryDeletedIds, logs: webhookLogs });
       });
-    }).on('error', () => resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, logs: webhookLogs }));
+    }).on('error', () => resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, deletedIds: memoryDeletedIds, logs: webhookLogs }));
   });
 }
-
-
 
 const GOOGLE_SHEETS_SCRIPT_URL = process.env.GOOGLE_SHEETS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzUdIU62Fx5-OS9Ldjx54O_HU5NJtt-C5RoFrF0k1OECVeTnFlyirdEheX6b88e8rBXmw/exec';
 
@@ -283,17 +289,24 @@ async function syncToGoogleSheets(data) {
   }
 }
 
-function saveCloudData(leadsList, truckTypesList, logsList) {
+function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList) {
   return new Promise((resolve) => {
     if (Array.isArray(leadsList)) memoryLeads = leadsList;
     if (Array.isArray(truckTypesList)) memoryTruckTypes = truckTypesList;
     if (Array.isArray(logsList)) webhookLogs = logsList;
+    if (Array.isArray(deletedIdsList)) memoryDeletedIds = deletedIdsList;
+
+    // Filter memoryLeads against blacklist before saving to cloud
+    if (memoryDeletedIds.length > 0) {
+      memoryLeads = memoryLeads.filter(l => !memoryDeletedIds.includes(l.phone) && (!l.id || !memoryDeletedIds.includes(l.id)));
+    }
 
     const payload = JSON.stringify({
       name: 'PancakeCRM_Leads',
       data: {
         leads: memoryLeads,
         truckTypes: memoryTruckTypes,
+        deletedIds: memoryDeletedIds.slice(-500),
         logs: webhookLogs.slice(0, 30),
         updatedAt: new Date().toISOString()
       }
@@ -620,6 +633,7 @@ module.exports = async (req, res) => {
       leads: memoryLeads,
       recentLeads: memoryLeads.slice(0, 50),
       truckTypes: memoryTruckTypes,
+      deletedIds: memoryDeletedIds,
       webhookLogs: webhookLogs.slice(0, 50),
       securityAuditLogs: effectiveRole === 'admin' ? securityAuditLogs.slice(0, 30) : [],
       totalReceived: webhookLogs.length,
@@ -635,27 +649,43 @@ module.exports = async (req, res) => {
     }
     const delPhone = payload?.phone;
     const delId = payload?.id;
+
+    if (delPhone && !memoryDeletedIds.includes(delPhone)) memoryDeletedIds.push(delPhone);
+    if (delId && !memoryDeletedIds.includes(delId)) memoryDeletedIds.push(delId);
+    if (Array.isArray(payload?.deletedIds)) {
+      for (const d of payload.deletedIds) {
+        if (d && !memoryDeletedIds.includes(d)) memoryDeletedIds.push(d);
+      }
+    }
+
     if (Array.isArray(payload?.leads)) {
-      memoryLeads = payload.leads;
+      memoryLeads = payload.leads.filter(l => !memoryDeletedIds.includes(l.phone) && (!l.id || !memoryDeletedIds.includes(l.id)));
     } else if (delPhone || delId) {
       memoryLeads = memoryLeads.filter(l => (!delId || l.id !== delId) && (!delPhone || l.phone !== delPhone));
     }
-    await saveCloudData(memoryLeads, memoryTruckTypes);
+    await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
     recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'delete_lead_success');
-    return res.status(200).json({ success: true, message: 'Lead deleted permanently', totalLeads: memoryLeads.length });
+    return res.status(200).json({ success: true, message: 'Lead deleted permanently', totalLeads: memoryLeads.length, deletedIds: memoryDeletedIds });
   }
 
   // PUT / POST with sync action: Save state from frontend
   if (action === 'sync_trucks') {
     if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) {
       memoryTruckTypes = payload.truckTypes;
-      await saveCloudData(memoryLeads, memoryTruckTypes);
+      await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
       recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_truck_types');
       return res.status(200).json({ success: true, message: 'Truck types updated', truckTypes: memoryTruckTypes });
     }
   }
 
   if (action === 'sync_state') {
+    // Merge deletedIds if client sent any
+    if (Array.isArray(payload?.deletedIds)) {
+      for (const d of payload.deletedIds) {
+        if (d && !memoryDeletedIds.includes(d)) memoryDeletedIds.push(d);
+      }
+    }
+
     // RBAC: Role-Based Access Control
     if (authUser.role === 'sales') {
       // Sales can only update the 'report' note for leads; they cannot delete leads or change truck list
@@ -674,15 +704,17 @@ module.exports = async (req, res) => {
         }
         await syncToGoogleSheets(payload.lead);
       }
-      await saveCloudData(memoryLeads, memoryTruckTypes);
+      await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
       recordAuditLog(req, clientIp, authUser.role, 200, 'sync_sales_report');
-      return res.status(200).json({ success: true, message: 'Sales report updated', role: 'sales' });
+      return res.status(200).json({ success: true, message: 'Sales report updated', role: 'sales', deletedIds: memoryDeletedIds });
     }
 
-    // Admin has full control
-    if (Array.isArray(payload?.leads)) memoryLeads = payload.leads;
+    // Admin has full control - filter against blacklist
+    if (Array.isArray(payload?.leads)) {
+      memoryLeads = payload.leads.filter(l => !memoryDeletedIds.includes(l.phone) && (!l.id || !memoryDeletedIds.includes(l.id)));
+    }
     if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) memoryTruckTypes = payload.truckTypes;
-    await saveCloudData(memoryLeads, memoryTruckTypes);
+    await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
     
     // If a specific lead was updated, sync that lead to Google Sheets
     if (payload?.lead) {
@@ -694,6 +726,7 @@ module.exports = async (req, res) => {
       success: true, 
       message: 'Cloud state synced successfully', 
       totalLeads: memoryLeads.length,
+      deletedIds: memoryDeletedIds,
       role: authUser.role || 'admin'
     });
   }

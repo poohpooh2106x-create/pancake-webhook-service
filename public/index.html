@@ -1358,7 +1358,40 @@
 
 
 
-    // 2. Multi-Layer Non-Destructive Storage Loader (กู้คืนและผสานข้อมูลทุกเลเยอร์ ไม่มีวันหาย 100%)
+    // Helper: Cleanse all local storages from deleted IDs/phones
+    function cleanseAllLocalStorages(deletedIds) {
+      if (!Array.isArray(deletedIds) || deletedIds.length === 0) return;
+      const keys = [
+        MASTER_LEADS_KEY,
+        BACKUP_LEADS_KEY,
+        'pancake_sales_leads_v3',
+        'pancake_sales_leads_v2',
+        'pancake_sales_leads_v1',
+        'pancake_sales_leads'
+      ];
+      for (const k of keys) {
+        try {
+          const data = localStorage.getItem(k);
+          if (data) {
+            const arr = JSON.parse(data);
+            if (Array.isArray(arr)) {
+              const cleaned = arr.filter(l => !deletedIds.includes(l.phone) && (!l.id || !deletedIds.includes(l.id)));
+              localStorage.setItem(k, JSON.stringify(cleaned));
+            }
+          }
+        } catch(e) {}
+      }
+
+      if (db) {
+        try {
+          const tx = db.transaction(DB_STORE, 'readwrite');
+          const store = tx.objectStore(DB_STORE);
+          store.put({ id: 'all_leads', data: leads, updatedAt: new Date().toISOString() });
+        } catch(e) {}
+      }
+    }
+
+    // 2. Multi-Layer Non-Destructive Storage Loader with Blacklist Enforcement
     async function initData() {
       loadTruckTypes();
       await initIndexedDB();
@@ -1368,7 +1401,13 @@
 
       const masterMap = new Map();
 
-      // Step A: Load from all historical LocalStorage keys
+      // Step A: Load deleted blacklist first
+      let localDeletedIds = [];
+      try {
+        localDeletedIds = JSON.parse(localStorage.getItem('pancake_deleted_lead_ids') || '[]');
+      } catch(e) {}
+
+      // Step B: Load from all historical LocalStorage keys (filtering against blacklist)
       const historicalKeys = [
         MASTER_LEADS_KEY,
         BACKUP_LEADS_KEY,
@@ -1386,7 +1425,7 @@
             if (Array.isArray(arr)) {
               arr.forEach(l => {
                 const key = l.phone || l.id;
-                if (key && !masterMap.has(key)) {
+                if (key && !masterMap.has(key) && !localDeletedIds.includes(l.phone) && (!l.id || !localDeletedIds.includes(l.id))) {
                   masterMap.set(key, {
                     ...l,
                     source: sanitizeChannelName(l.source),
@@ -1402,7 +1441,7 @@
         }
       }
 
-      // Step B: Load from IndexedDB
+      // Step C: Load from IndexedDB (filtering against blacklist)
       if (db) {
         try {
           await new Promise((resolve) => {
@@ -1413,7 +1452,7 @@
               if (req.result && Array.isArray(req.result.data)) {
                 req.result.data.forEach(l => {
                   const key = l.phone || l.id;
-                  if (key && !masterMap.has(key)) {
+                  if (key && !masterMap.has(key) && !localDeletedIds.includes(l.phone) && (!l.id || !localDeletedIds.includes(l.id))) {
                     masterMap.set(key, {
                       ...l,
                       source: sanitizeChannelName(l.source),
@@ -1432,15 +1471,33 @@
         } catch(e) {}
       }
 
-      // Step C: Fetch and merge with Cloud Database (Authenticated)
+      // Step D: Fetch and merge with Cloud Database (Authenticated)
       try {
         const res = await fetchWithAuth('/api/webhooks/pancake');
         if (res && res.ok) {
           const data = await res.json();
+
+          // Sync server-side deleted blacklist into local blacklist
+          if (Array.isArray(data.deletedIds)) {
+            for (const d of data.deletedIds) {
+              if (d && !localDeletedIds.includes(d)) localDeletedIds.push(d);
+            }
+            try {
+              localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(localDeletedIds.slice(-500)));
+            } catch(e) {}
+          }
+
+          // Purge any blacklisted entries that may have sneaked in
+          for (const [key, l] of masterMap.entries()) {
+            if (localDeletedIds.includes(l.phone) || (l.id && localDeletedIds.includes(l.id))) {
+              masterMap.delete(key);
+            }
+          }
+
           if (Array.isArray(data.leads)) {
             data.leads.forEach(serverLead => {
               const key = serverLead.phone || serverLead.id;
-              if (key) {
+              if (key && !localDeletedIds.includes(serverLead.phone) && (!serverLead.id || !localDeletedIds.includes(serverLead.id))) {
                 const serverSales = sanitizeSalesName(serverLead.sales);
                 if (masterMap.has(key)) {
                   // Merge fields intelligently: keep local sales if server is empty
@@ -1480,13 +1537,15 @@
         console.warn('Could not fetch cloud data, using local master cache:', e);
       }
 
-
       // Finalize leads array with complete merged data
       leads = Array.from(masterMap.values());
       scannedMessageCount = leads.length;
 
-      // Save complete merged state to all layers & sync back to cloud!
-      saveState(true);
+      // Cleanse local storage to permanently remove any old deleted remnants
+      cleanseAllLocalStorages(localDeletedIds);
+
+      // Save complete merged state locally without forcing a full cloud overwrite
+      saveState(false);
       updateAll();
       showSaveIndicator('กู้คืนและผสานข้อมูลทั้งหมดเรียบร้อยแล้ว ✅');
     }
@@ -1516,16 +1575,20 @@
 
       // Sync to Universal Cloud Database across all devices (Authenticated)
       if (syncToCloud) {
+        let deletedIds = [];
+        try {
+          deletedIds = JSON.parse(localStorage.getItem('pancake_deleted_lead_ids') || '[]');
+        } catch(e) {}
+
         try {
           fetchWithAuth('/api/webhooks/pancake?action=sync_state', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ leads, truckTypes })
+            body: JSON.stringify({ leads, truckTypes, deletedIds })
           });
         } catch(e) {}
       }
     }
-
 
     function showSaveIndicator(text) {
       const el = document.getElementById('saveIndicator');
@@ -1799,27 +1862,32 @@
         cancelButtonColor: '#334155',
         confirmButtonText: 'ใช่, ลบเคสนี้',
         cancelButtonText: 'ยกเลิก'
-      }).then((result) => {
+      }).then(async (result) => {
         if (result.isConfirmed) {
           const removed = leads.splice(idx, 1)[0];
 
-          // Remember deleted phone/ID in localStorage so background sync never resurrects it
+          // 1. Remember deleted phone/ID in blacklist
+          let deletedIds = [];
           try {
-            const deletedIds = JSON.parse(localStorage.getItem('pancake_deleted_lead_ids') || '[]');
-            if (removed.phone) deletedIds.push(removed.phone);
-            if (removed.id) deletedIds.push(removed.id);
-            localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(deletedIds.slice(-200)));
+            deletedIds = JSON.parse(localStorage.getItem('pancake_deleted_lead_ids') || '[]');
+          } catch(e) {}
+          if (removed.phone && !deletedIds.includes(removed.phone)) deletedIds.push(removed.phone);
+          if (removed.id && !deletedIds.includes(removed.id)) deletedIds.push(removed.id);
+          try {
+            localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(deletedIds.slice(-500)));
           } catch(e) {}
 
-          saveState(true);
+          // 2. Cleanse all local storages (LocalStorage historical keys + IndexedDB) immediately
+          saveState(false);
+          cleanseAllLocalStorages(deletedIds);
           updateAll();
 
-          // Sync deletion to server immediately
+          // 3. Sync deletion and updated blacklist to Cloud Server immediately
           try {
-            fetchWithAuth('/api/webhooks/pancake?action=delete_lead', {
+            await fetchWithAuth('/api/webhooks/pancake?action=delete_lead', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ phone: removed.phone, id: removed.id, leads }),
+              body: JSON.stringify({ phone: removed.phone, id: removed.id, leads, deletedIds }),
               keepalive: true
             });
           } catch(e) {}
@@ -1844,12 +1912,35 @@
         cancelButtonColor: '#334155',
         confirmButtonText: 'ใช่, ล้างข้อมูล',
         cancelButtonText: 'ยกเลิก'
-      }).then((result) => {
+      }).then(async (result) => {
         if (result.isConfirmed) {
+          let deletedIds = [];
+          try {
+            deletedIds = JSON.parse(localStorage.getItem('pancake_deleted_lead_ids') || '[]');
+          } catch(e) {}
+          leads.forEach(l => {
+            if (l.phone && !deletedIds.includes(l.phone)) deletedIds.push(l.phone);
+            if (l.id && !deletedIds.includes(l.id)) deletedIds.push(l.id);
+          });
+          try {
+            localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(deletedIds.slice(-500)));
+          } catch(e) {}
+
           leads = [];
           scannedMessageCount = 0;
-          saveState();
+          saveState(false);
+          cleanseAllLocalStorages(deletedIds);
           updateAll();
+
+          try {
+            await fetchWithAuth('/api/webhooks/pancake?action=delete_lead', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ leads: [], deletedIds }),
+              keepalive: true
+            });
+          } catch(e) {}
+
           Swal.fire('เรียบร้อย', 'ล้างข้อมูลทั้งหมดเรียบร้อยแล้ว', 'success');
         }
       });
@@ -2389,21 +2480,44 @@ ${adSection}━━━━━━━━━━━━━━━━━━
           }
         }
 
+        let localDeletedIds = [];
+        try {
+          localDeletedIds = JSON.parse(localStorage.getItem('pancake_deleted_lead_ids') || '[]');
+        } catch(e) {}
+
+        // Sync server deletedIds into local blacklist across devices
+        if (Array.isArray(data.deletedIds)) {
+          let updated = false;
+          for (const d of data.deletedIds) {
+            if (d && !localDeletedIds.includes(d)) {
+              localDeletedIds.push(d);
+              updated = true;
+            }
+          }
+          if (updated) {
+            try {
+              localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(localDeletedIds.slice(-500)));
+            } catch(e) {}
+          }
+        }
+
+        let hasChanges = false;
+        let needsPushToCloud = false;
+
+        // Instantly purge any blacklisted leads that were deleted by other devices
+        const prevCount = leads.length;
+        leads = leads.filter(l => !localDeletedIds.includes(l.phone) && (!l.id || !localDeletedIds.includes(l.id)));
+        if (leads.length !== prevCount) {
+          hasChanges = true;
+          cleanseAllLocalStorages(localDeletedIds);
+        }
 
         // Sync all leads from cloud across all devices with smart merging
         if (Array.isArray(data.leads) && data.leads.length > 0) {
-          let hasChanges = false;
-          let needsPushToCloud = false;
-
-          let deletedIds = [];
-          try {
-            deletedIds = JSON.parse(localStorage.getItem('pancake_deleted_lead_ids') || '[]');
-          } catch(e) {}
-
           const validServerLeads = data.leads.filter(sl => {
             if (!sl || !sl.phone) return false;
             // Ignore test leads or leads explicitly deleted by user
-            if (deletedIds.includes(sl.phone) || (sl.id && deletedIds.includes(sl.id))) return false;
+            if (localDeletedIds.includes(sl.phone) || (sl.id && localDeletedIds.includes(sl.id))) return false;
             if (sl.phone === '0899999999' || sl.phone === '0891234567' || (sl.name && sl.name.includes('ทดสอบ'))) return false;
             return true;
           });

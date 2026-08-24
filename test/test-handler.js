@@ -193,7 +193,50 @@ async function runAllTests() {
     console.log('✅ Test 8 Passed: State and single lead update sync');
   }
 
-  console.log('\n🎉 ALL TESTS PASSED SUCCESSFULLY! The codebase is robust, clean, and ready.\n');
+  // Test 9: Lead Deletion & Cloud Blacklist
+  {
+    const delPhone = '0812345678';
+    const { req, res, resData } = createMockReqRes({
+      method: 'POST',
+      query: { action: 'delete_lead' },
+      headers: { 'x-pancake-secret': 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e' },
+      body: {
+        phone: delPhone,
+        id: 'test_lead_std_01'
+      }
+    });
+    await pancakeHandler(req, res);
+    assert.strictEqual(resData.statusCode, 200);
+    assert.strictEqual(resData.body.success, true);
+    assert.ok(resData.body.deletedIds?.includes(delPhone), 'Deleted phone must be recorded in blacklist');
+    console.log('✅ Test 9 Passed: Permanent deletion and cloud blacklist recording');
+  }
+
+  // Test 10: Server Blacklist Rejection of Resurrected Leads
+  {
+    const resurrectedLead = {
+      id: 'test_lead_std_01',
+      phone: '0812345678',
+      name: 'พยายามคืนชีพเคสเก่า'
+    };
+    const { req, res, resData } = createMockReqRes({
+      method: 'POST',
+      query: { action: 'sync_state' },
+      headers: { 'x-pancake-secret': 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e' },
+      body: {
+        leads: [resurrectedLead]
+      }
+    });
+    await pancakeHandler(req, res);
+    assert.strictEqual(resData.statusCode, 200);
+    const { req: getReq, res: getRes, resData: getResData } = createMockReqRes({ method: 'GET' });
+    await pancakeHandler(getReq, getRes);
+    const found = getResData.body.leads?.find(l => l.phone === '0812345678');
+    assert.strictEqual(found, undefined, 'Blacklisted lead must be completely rejected by Cloud Server');
+    console.log('✅ Test 10 Passed: Cloud Blacklist blocks resurrection of deleted leads');
+  }
+
+  console.log('\n🎉 ALL 10 TESTS PASSED SUCCESSFULLY! The codebase is robust, clean, and ready.\n');
 }
 
 runAllTests().catch((err) => {
