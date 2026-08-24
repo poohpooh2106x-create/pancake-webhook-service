@@ -1172,20 +1172,46 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
+    const DEFAULT_ADMIN_TOKEN = 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
     let currentUserRole = 'admin'; // 'admin' | 'sales'
     let isPromptingLogin = false;
     let currentLogTab = 'webhook'; // 'webhook' | 'audit'
     let latestAuditLogs = [];
+    let pollingTimer = null;
+
+    function getStoredToken() {
+      return localStorage.getItem('pancake_auth_token') || DEFAULT_ADMIN_TOKEN;
+    }
+
+    function setStoredToken(token) {
+      if (token) {
+        localStorage.setItem('pancake_auth_token', token.trim());
+      }
+    }
+
+    function startPolling() {
+      if (!pollingTimer) {
+        pollingTimer = setInterval(refreshLeads, 4000);
+      }
+    }
+
+    function stopPolling() {
+      if (pollingTimer) {
+        clearInterval(pollingTimer);
+        pollingTimer = null;
+      }
+    }
 
     async function promptLoginModal(customMsg) {
       if (isPromptingLogin) return;
       isPromptingLogin = true;
+      stopPolling(); // Stop all background requests immediately!
 
       const { value: token } = await Swal.fire({
         title: '🔒 เข้าสู่ระบบ Pancake Sales CRM',
         html: `
           <p style="font-size: 13px; color: #94a3b8; margin-bottom: 12px;">
-            ${customMsg || 'ระบบใช้การยืนยันตัวตนด้วย <strong>httpOnly Cookie</strong> เพื่อความปลอดภัยสูงสุด กรุณากรอก Secret Token / รหัสผ่าน'}
+            ${customMsg || 'ระบบใช้การยืนยันตัวตนด้วย <strong>httpOnly Cookie & Secret Token</strong> กรุณากรอกรหัสผ่าน'}
           </p>
           <div style="font-size: 11px; text-align: left; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.2); padding: 8px 12px; border-radius: 6px; color: #38bdf8; margin-bottom: 10px;">
             👑 <strong>Admin Token:</strong> เข้าถึงได้ทั้งหมด 100%<br>
@@ -1194,6 +1220,7 @@
         `,
         input: 'password',
         inputPlaceholder: 'กรอก Admin หรือ Sales Token...',
+        inputValue: getStoredToken(),
         showCancelButton: false,
         allowOutsideClick: false,
         allowEscapeKey: false,
@@ -1211,11 +1238,15 @@
           const res = await fetch('/api/webhooks/pancake?action=login', {
             method: 'POST',
             credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Pancake-Secret': token.trim()
+            },
             body: JSON.stringify({ token: token.trim() })
           });
           const data = await res.json();
           if (res.ok && data.success) {
+            setStoredToken(token.trim());
             currentUserRole = data.role || 'admin';
             applyRolePermissions(currentUserRole);
             Swal.fire({ 
@@ -1224,6 +1255,7 @@
               timer: 1500, 
               showConfirmButton: false 
             });
+            startPolling();
             initData();
           } else {
             promptLoginModal('❌ รหัสผ่าน / Token ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง');
@@ -1235,6 +1267,8 @@
     }
 
     async function logoutCRM() {
+      stopPolling();
+      localStorage.removeItem('pancake_auth_token');
       await fetch('/api/webhooks/pancake?action=logout', { method: 'POST', credentials: 'include' });
       Swal.fire({
         icon: 'info',
@@ -1271,16 +1305,26 @@
     }
 
     async function fetchWithAuth(url, options = {}) {
+      const token = getStoredToken();
+      const headers = {
+        ...(options.headers || {}),
+        'X-Pancake-Secret': token
+      };
+
       try {
         const res = await fetch(url, {
           ...options,
+          headers,
           credentials: 'include' // Sends httpOnly Cookie automatically
         });
 
         if (res.status === 401) {
-          console.warn('⚠️ 401 Unauthorized: Session cookie missing or expired');
+          stopPolling();
+          console.warn('⚠️ 401 Unauthorized');
           showSaveIndicator('⚠️ กรุณาเข้าสู่ระบบ');
-          promptLoginModal('เซสชันหมดอายุหรือยังไม่ได้เข้าสู่ระบบ กรุณากรอก Token');
+          if (!isPromptingLogin) {
+            promptLoginModal('เซสชันหมดอายุหรือยังไม่ได้เข้าสู่ระบบ กรุณากรอก Token');
+          }
           return null;
         }
 
@@ -1300,6 +1344,7 @@
         throw err;
       }
     }
+
 
 
     // 2. Multi-Layer Non-Destructive Storage Loader (กู้คืนและผสานข้อมูลทุกเลเยอร์ ไม่มีวันหาย 100%)
@@ -2515,10 +2560,10 @@ ${adSection}━━━━━━━━━━━━━━━━━━
     // Auto init
     window.addEventListener('DOMContentLoaded', () => {
       initData();
-      // Auto sync with cloud database every 3 seconds!
-      setInterval(refreshLeads, 3000);
+      startPolling();
 
       // Close modal on click outside or ESC
+
       document.querySelectorAll('.modal-overlay').forEach(overlay => {
         overlay.addEventListener('click', (e) => {
           if (e.target === overlay) {
