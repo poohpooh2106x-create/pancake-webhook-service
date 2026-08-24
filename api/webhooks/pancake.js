@@ -92,7 +92,7 @@ function deepFindThaiPhone(obj, parentKey = '') {
 }
 
 
-// Cloud Storage Helpers (Global Multi-Device Sync)
+// Cloud Storage Helpers (Global Multi-Device Sync & Persistent Logs)
 function fetchCloudData() {
   return new Promise((resolve) => {
     https.get(CLOUD_API_URL, (res) => {
@@ -106,26 +106,31 @@ function fetchCloudData() {
             if (Array.isArray(json.data.truckTypes)) {
               memoryTruckTypes = json.data.truckTypes;
             }
+            if (Array.isArray(json.data.logs)) {
+              webhookLogs = json.data.logs;
+            }
             resolve(json.data);
             return;
           }
         } catch(e) {}
-        resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes });
+        resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, logs: webhookLogs });
       });
-    }).on('error', () => resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes }));
+    }).on('error', () => resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, logs: webhookLogs }));
   });
 }
 
-function saveCloudData(leadsList, truckTypesList) {
+function saveCloudData(leadsList, truckTypesList, logsList) {
   return new Promise((resolve) => {
     if (Array.isArray(leadsList)) memoryLeads = leadsList;
     if (Array.isArray(truckTypesList)) memoryTruckTypes = truckTypesList;
+    if (Array.isArray(logsList)) webhookLogs = logsList;
 
     const payload = JSON.stringify({
       name: 'PancakeCRM_Leads',
       data: {
         leads: memoryLeads,
         truckTypes: memoryTruckTypes,
+        logs: webhookLogs.slice(0, 30),
         updatedAt: new Date().toISOString()
       }
     });
@@ -375,6 +380,7 @@ module.exports = async (req, res) => {
 
     if (itemsToProcess.length === 0) {
       console.log('ℹ️ No customer/phone items detected in payload');
+      await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs);
       return res.status(200).json({
         success: true,
         message: 'Webhook received (no customer items matched)',
@@ -453,10 +459,9 @@ module.exports = async (req, res) => {
       ]);
     }
 
-    // Save updated leads to Cloud Database immediately!
-    if (newLeads.length > 0) {
-      await saveCloudData(memoryLeads, memoryTruckTypes);
-    }
+    // Save updated leads and persistent logs to Cloud Database immediately!
+    await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs);
+
 
     // If Google Sheets is configured, also append to Sheets
     if (rowsToAppend.length > 0) {
