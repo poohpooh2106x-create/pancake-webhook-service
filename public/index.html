@@ -1824,32 +1824,36 @@
     function parseLeadDateTime(dateStr, timeStr) {
       if (!dateStr) return 0;
       try {
+        const dStr = String(dateStr);
         let d = 1, m = 1, y = 1970;
-        if (dateStr.includes('/')) {
-          const parts = dateStr.split('/');
+        if (dStr.includes('/')) {
+          const parts = dStr.split('/');
           if (parts.length === 3) {
-            d = parseInt(parts[0], 10);
-            m = parseInt(parts[1], 10) - 1;
-            y = parseInt(parts[2], 10);
+            d = parseInt(parts[0], 10) || 1;
+            m = (parseInt(parts[1], 10) || 1) - 1;
+            y = parseInt(parts[2], 10) || 1970;
           }
-        } else if (dateStr.includes('-')) {
-          const parts = dateStr.split('-');
+        } else if (dStr.includes('-')) {
+          const parts = dStr.split('-');
           if (parts.length === 3) {
             if (parts[0].length === 4) {
-              y = parseInt(parts[0], 10);
-              m = parseInt(parts[1], 10) - 1;
-              d = parseInt(parts[2], 10);
+              y = parseInt(parts[0], 10) || 1970;
+              m = (parseInt(parts[1], 10) || 1) - 1;
+              d = parseInt(parts[2], 10) || 1;
             } else {
-              d = parseInt(parts[0], 10);
-              m = parseInt(parts[1], 10) - 1;
-              y = parseInt(parts[2], 10);
+              d = parseInt(parts[0], 10) || 1;
+              m = (parseInt(parts[1], 10) || 1) - 1;
+              y = parseInt(parts[2], 10) || 1970;
             }
           }
+        } else if (/^\d+$/.test(dStr)) {
+          return parseInt(dStr, 10);
         }
 
         let hh = 0, mm = 0, ss = 0;
         if (timeStr) {
-          const tParts = timeStr.split(':');
+          const tStr = String(timeStr);
+          const tParts = tStr.split(':');
           if (tParts.length >= 2) {
             hh = parseInt(tParts[0], 10) || 0;
             mm = parseInt(tParts[1], 10) || 0;
@@ -1865,11 +1869,16 @@
 
     function sortLeadsByDate(leadsArray) {
       if (!Array.isArray(leadsArray)) return [];
-      return leadsArray.sort((a, b) => {
-        const timeA = parseLeadDateTime(a.date, a.time);
-        const timeB = parseLeadDateTime(b.date, b.time);
-        return timeB - timeA; // Newest first at top!
-      });
+      try {
+        return [...leadsArray].sort((a, b) => {
+          const timeA = (a && a.date) ? parseLeadDateTime(a.date, a.time) : 0;
+          const timeB = (b && b.date) ? parseLeadDateTime(b.date, b.time) : 0;
+          return timeB - timeA; // Newest first at top!
+        });
+      } catch(e) {
+        console.warn('sortLeadsByDate error:', e);
+        return leadsArray;
+      }
     }
 
     // Helper: Normalize Thai Phone Number
@@ -1923,10 +1932,10 @@
     }
 
     function updateAll() {
-      renderMetrics();
-      renderSalesList();
-      renderTable();
-      updateCharts();
+      try { renderMetrics(); } catch(e) { console.warn('renderMetrics error:', e); }
+      try { renderSalesList(); } catch(e) { console.warn('renderSalesList error:', e); }
+      try { renderTable(); } catch(e) { console.warn('renderTable error:', e); }
+      try { updateCharts(); } catch(e) { console.warn('updateCharts error:', e); }
     }
 
     const GOOGLE_SHEETS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzUdIU62Fx5-OS9Ldjx54O_HU5NJtt-C5RoFrF0k1OECVeTnFlyirdEheX6b88e8rBXmw/exec';
@@ -1943,22 +1952,29 @@
     }
 
     function renderMetrics() {
-      const totalLeads = leads.length;
-      const assigned = leads.filter(l => l.sales && l.sales !== '').length;
+      const validLeads = Array.isArray(leads) ? leads.filter(l => l && typeof l === 'object') : [];
+      const totalLeads = validLeads.length;
+      const assigned = validLeads.filter(l => l.sales && l.sales !== '').length;
       const pending = totalLeads - assigned;
 
-      document.getElementById('statLeadsCount').innerText = totalLeads;
-      document.getElementById('statAssignedCount').innerText = assigned;
-      document.getElementById('statPendingCount').innerText = pending;
-      document.getElementById('statScannedCount').innerText = scannedMessageCount;
+      const elTotal = document.getElementById('statLeadsCount');
+      if (elTotal) elTotal.innerText = totalLeads;
+      const elAssigned = document.getElementById('statAssignedCount');
+      if (elAssigned) elAssigned.innerText = assigned;
+      const elPending = document.getElementById('statPendingCount');
+      if (elPending) elPending.innerText = pending;
+      const elScanned = document.getElementById('statScannedCount');
+      if (elScanned) elScanned.innerText = scannedMessageCount;
     }
 
     function renderSalesList() {
       const container = document.getElementById('salesTeamList');
+      if (!container) return;
       container.innerHTML = '';
 
+      const validLeads = Array.isArray(leads) ? leads.filter(l => l && typeof l === 'object') : [];
       SALES_TEAM.forEach(s => {
-        const count = leads.filter(l => l.sales === s.name).length;
+        const count = validLeads.filter(l => l.sales === s.name).length;
         const div = document.createElement('div');
         div.className = 'sales-item';
         div.innerHTML = `
@@ -1972,105 +1988,124 @@
     function setChannelFilter(channel, btn) {
       currentFilter = channel;
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      if (btn) btn.classList.add('active');
       renderTable();
     }
 
     function renderTable() {
-      const tbody = document.getElementById('leadsTableBody');
-      const query = document.getElementById('tableSearch').value.toLowerCase().trim();
+      try {
+        const tbody = document.getElementById('leadsTableBody');
+        if (!tbody) return;
+        const searchInput = document.getElementById('tableSearch');
+        const query = (searchInput ? searchInput.value : '').toLowerCase().trim();
 
-      let filtered = sortLeadsByDate([...leads]);
-      if (currentFilter !== 'ทั้งหมด') {
-        filtered = filtered.filter(l => sanitizeChannelName(l.source) === currentFilter);
-      }
+        const validLeads = Array.isArray(leads) ? leads.filter(l => l && typeof l === 'object') : [];
+        let filtered = sortLeadsByDate([...validLeads]);
 
-      if (query) {
-        filtered = filtered.filter(l => 
-          (l.name && l.name.toLowerCase().includes(query)) ||
-          (l.phone && l.phone.includes(query)) ||
-          (l.truck && l.truck.toLowerCase().includes(query)) ||
-          (l.sales && l.sales.toLowerCase().includes(query))
-        );
-      }
-
-      if (filtered.length === 0) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="10" class="empty-state">
-              📭 ยังไม่มีข้อมูลเคสลูกค้าที่ตรงกับเงื่อนไข<br>
-              <span style="font-size: 11px;">(เมื่อ PanCake ส่ง Webhook เข้ามา ข้อมูลจะเด้งขึ้นตรงนี้อัตโนมัติ)</span>
-            </td>
-          </tr>
-        `;
-        return;
-      }
-
-      tbody.innerHTML = filtered.map((lead, idx) => {
-        const realIdx = leads.indexOf(lead);
-        let leadTruckList = [...truckTypes];
-        if (lead.truck && !leadTruckList.includes(lead.truck)) {
-          leadTruckList.unshift(lead.truck);
+        if (currentFilter && currentFilter !== 'ทั้งหมด') {
+          filtered = filtered.filter(l => l && sanitizeChannelName(l.source) === currentFilter);
         }
-        let leadChannelList = [...channelSources];
-        const currentSource = sanitizeChannelName(lead.source);
-        if (currentSource && !leadChannelList.includes(currentSource)) {
-          leadChannelList.unshift(currentSource);
-        }
-        const channelOptionsHtml = leadChannelList.map(c => `<option value="${c}" ${currentSource === c ? 'selected' : ''}>${c}</option>`).join('');
 
-        return `
-          <tr>
-            <td>${lead.date}</td>
-            <td style="color: #94a3b8;">${lead.time}</td>
-            <td>
-              <select class="select-sm" onchange="updateLeadSource(${realIdx}, this.value)" style="background: rgba(255,255,255,0.06); font-size: 11px;">
-                ${channelOptionsHtml}
-              </select>
-            </td>
-            <td style="font-weight: 500;">${lead.name}</td>
-            <td class="cell-phone">
-              <a href="tel:${lead.phone}" style="color: inherit; text-decoration: none;" title="กดเพื่อโทร">${lead.phone}</a>
-            </td>
-            <td>
-              <select class="select-sm" style="${lead.truck ? 'border-color: #38bdf8; color: #38bdf8;' : 'border-color: #f59e0b; color: #fbbf24;'}" onchange="updateLeadTruck(${realIdx}, this.value)">
-                <option value="">-- เลือกรถ --</option>
-                ${truckOptionsHtml}
-              </select>
-            </td>
-            <td>
-              ${lead.ad ? `<span style="background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; display: inline-block; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${lead.ad}">📢 ${lead.ad}</span>` : '<span style="color: #64748b; font-size: 12px;">-</span>'}
-            </td>
-            <td>
-              <select class="select-sm" style="${lead.sales ? 'border-color: #10b981; color: #34d399;' : 'border-color: #f59e0b; color: #fbbf24;'}" onchange="updateLeadSales(${realIdx}, this.value)">
-                <option value="">-- เลือกเซลล์ --</option>
-                ${SALES_TEAM.map(s => `<option value="${s.name}" ${lead.sales === s.name ? 'selected' : ''}>${s.name}</option>`).join('')}
-              </select>
-            </td>
-            <td>
-              <input type="text" class="input-report" 
-                     value="${(lead.report || '').replace(/"/g, '&quot;')}" 
-                     placeholder="📝 พิมพ์รีพอร์ต เช่น สนใจเข้ามาดู..." 
-                     oninput="updateLeadReport(${realIdx}, this.value)"
-                     onchange="updateLeadReport(${realIdx}, this.value)"
-                     style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-light); border-radius: 6px; color: #f1f5f9; padding: 6px 10px; font-size: 12px; width: 100%; min-width: 200px; outline: none; transition: border-color 0.2s, background 0.2s;"
-                     onfocus="this.style.borderColor='#38bdf8'; this.style.background='rgba(56,189,248,0.08)';"
-                     onblur="this.style.borderColor='var(--border-light)'; this.style.background='rgba(255,255,255,0.04)';"
-              >
-            </td>
-            <td style="text-align: center; white-space: nowrap;">
-              <button class="btn-line-send" onclick="sendToLine(${realIdx})" title="ส่งข้อมูลให้เซลล์ทาง LINE">
-                🟢 ส่ง LINE
-              </button>
-              ${currentUserRole === 'admin' ? `
-                <button class="btn-del-row" onclick="deleteLead(${realIdx})" title="ลบเคสนี้">
-                  🗑️
+        if (query) {
+          filtered = filtered.filter(l => 
+            (l.name && String(l.name).toLowerCase().includes(query)) ||
+            (l.phone && String(l.phone).includes(query)) ||
+            (l.truck && String(l.truck).toLowerCase().includes(query)) ||
+            (l.sales && String(l.sales).toLowerCase().includes(query))
+          );
+        }
+
+        if (filtered.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="10" class="empty-state" style="text-align: center; padding: 30px; color: #94a3b8;">
+                📭 ยังไม่มีข้อมูลเคสลูกค้าที่ตรงกับเงื่อนไข<br>
+                <span style="font-size: 11px; color: #64748b;">(เมื่อ PanCake ส่ง Webhook เข้ามา หรือกดเลือกแท็บ "ทั้งหมด" ข้อมูลจะแสดงตรงนี้)</span>
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
+        tbody.innerHTML = filtered.map((lead, idx) => {
+          if (!lead) return '';
+          const realIdx = leads.indexOf(lead);
+          let leadTruckList = Array.isArray(truckTypes) ? [...truckTypes] : [];
+          if (lead.truck && !leadTruckList.includes(lead.truck)) {
+            leadTruckList.unshift(lead.truck);
+          }
+          const truckOptionsHtml = leadTruckList.map(t => `<option value="${t}" ${lead.truck === t ? 'selected' : ''}>${t}</option>`).join('');
+
+          let leadChannelList = Array.isArray(channelSources) ? [...channelSources] : [];
+          const currentSource = sanitizeChannelName(lead.source);
+          if (currentSource && !leadChannelList.includes(currentSource)) {
+            leadChannelList.unshift(currentSource);
+          }
+          const channelOptionsHtml = leadChannelList.map(c => `<option value="${c}" ${currentSource === c ? 'selected' : ''}>${c}</option>`).join('');
+
+          const leadDate = lead.date || '-';
+          const leadTime = lead.time || '-';
+          const leadName = lead.name || 'ไม่ระบุชื่อ';
+          const leadPhone = lead.phone || '-';
+          const leadAd = lead.ad ? String(lead.ad) : '';
+          const leadSales = lead.sales || '';
+          const leadReport = String(lead.report || '').replace(/"/g, '&quot;');
+
+          return `
+            <tr>
+              <td>${leadDate}</td>
+              <td style="color: #94a3b8;">${leadTime}</td>
+              <td>
+                <select class="select-sm" onchange="updateLeadSource(${realIdx}, this.value)" style="background: rgba(255,255,255,0.06); font-size: 11px;">
+                  ${channelOptionsHtml}
+                </select>
+              </td>
+              <td style="font-weight: 500;">${leadName}</td>
+              <td class="cell-phone">
+                <a href="tel:${leadPhone}" style="color: inherit; text-decoration: none;" title="กดเพื่อโทร">${leadPhone}</a>
+              </td>
+              <td>
+                <select class="select-sm" style="${lead.truck ? 'border-color: #38bdf8; color: #38bdf8;' : 'border-color: #f59e0b; color: #fbbf24;'}" onchange="updateLeadTruck(${realIdx}, this.value)">
+                  <option value="">-- เลือกรถ --</option>
+                  ${truckOptionsHtml}
+                </select>
+              </td>
+              <td>
+                ${leadAd ? `<span style="background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; display: inline-block; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${leadAd}">📢 ${leadAd}</span>` : '<span style="color: #64748b; font-size: 12px;">-</span>'}
+              </td>
+              <td>
+                <select class="select-sm" style="${leadSales ? 'border-color: #10b981; color: #34d399;' : 'border-color: #f59e0b; color: #fbbf24;'}" onchange="updateLeadSales(${realIdx}, this.value)">
+                  <option value="">-- เลือกเซลล์ --</option>
+                  ${SALES_TEAM.map(s => `<option value="${s.name}" ${leadSales === s.name ? 'selected' : ''}>${s.name}</option>`).join('')}
+                </select>
+              </td>
+              <td>
+                <input type="text" class="input-report" 
+                       value="${leadReport}" 
+                       placeholder="📝 พิมพ์รีพอร์ต เช่น สนใจเข้ามาดู..." 
+                       oninput="updateLeadReport(${realIdx}, this.value)"
+                       onchange="updateLeadReport(${realIdx}, this.value)"
+                       style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-light); border-radius: 6px; color: #f1f5f9; padding: 6px 10px; font-size: 12px; width: 100%; min-width: 200px; outline: none; transition: border-color 0.2s, background 0.2s;"
+                       onfocus="this.style.borderColor='#38bdf8'; this.style.background='rgba(56,189,248,0.08)';"
+                       onblur="this.style.borderColor='var(--border-light)'; this.style.background='rgba(255,255,255,0.04)';"
+                >
+              </td>
+              <td style="text-align: center; white-space: nowrap;">
+                <button class="btn-line-send" onclick="sendToLine(${realIdx})" title="ส่งข้อมูลให้เซลล์ทาง LINE">
+                  🟢 ส่ง LINE
                 </button>
-              ` : ''}
-            </td>
-          </tr>
-        `;
-      }).join('');
+                ${currentUserRole === 'admin' ? `
+                  <button class="btn-del-row" onclick="deleteLead(${realIdx})" title="ลบเคสนี้">
+                    🗑️
+                  </button>
+                ` : ''}
+              </td>
+            </tr>
+          `;
+        }).join('');
+      } catch(err) {
+        console.error('Render table error:', err);
+      }
     }
 
     function updateLeadTruck(idx, val) {
@@ -2645,20 +2680,22 @@ ${adSection}━━━━━━━━━━━━━━━━━━
     function updateCharts() {
       if (!truckChartInstance || !salesChartInstance) return;
       try {
+        const validLeads = Array.isArray(leads) ? leads.filter(l => l && typeof l === 'object') : [];
+
         // Dynamic Truck Data
-        const validTrucks = truckTypes && truckTypes.length > 0 ? truckTypes : ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม'];
+        const validTrucks = Array.isArray(truckTypes) && truckTypes.length > 0 ? truckTypes : ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
         truckChartInstance.data.labels = [...validTrucks];
         truckChartInstance.data.datasets[0].backgroundColor = validTrucks.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
 
-        const truckCounts = validTrucks.map(t => leads.filter(l => l.truck === t).length);
-        const displayTruckData = truckCounts.every(v => v === 0) ? validTrucks.map(() => 1) : truckCounts;
+        const truckCounts = validTrucks.map(t => validLeads.filter(l => l.truck === t).length);
+        const displayTruckData = truckCounts.every(v => v === 0) ? validTrucks.map(() => 0) : truckCounts;
         truckChartInstance.data.datasets[0].data = displayTruckData;
-        truckChartInstance.update('none');
+        truckChartInstance.update();
 
         // Dynamic Sales Data
-        const salesCounts = SALES_TEAM.map(s => leads.filter(l => l.sales === s.name).length);
+        const salesCounts = SALES_TEAM.map(s => validLeads.filter(l => l.sales === s.name).length);
         salesChartInstance.data.datasets[0].data = salesCounts;
-        salesChartInstance.update('none');
+        salesChartInstance.update();
       } catch(e) {
         console.warn('Update chart error:', e);
       }
