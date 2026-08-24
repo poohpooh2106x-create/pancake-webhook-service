@@ -1787,11 +1787,47 @@
         Swal.fire('ไม่มีสิทธิ์ลบเคส', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถลบเคสลูกค้าได้', 'warning');
         return;
       }
-      if (confirm('ต้องการลบเคสนี้ใช่หรือไม่?')) {
-        leads.splice(idx, 1);
-        saveState();
-        updateAll();
-      }
+      const leadToDelete = leads[idx];
+      if (!leadToDelete) return;
+
+      Swal.fire({
+        title: 'ยืนยันการลบเคส?',
+        text: `ต้องการลบข้อมูลลูกค้า "${leadToDelete.name || 'ไม่ระบุชื่อ'}" (${leadToDelete.phone}) ใช่หรือไม่?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'ใช่, ลบเคสนี้',
+        cancelButtonText: 'ยกเลิก'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          const removed = leads.splice(idx, 1)[0];
+
+          // Remember deleted phone/ID in localStorage so background sync never resurrects it
+          try {
+            const deletedIds = JSON.parse(localStorage.getItem('pancake_deleted_lead_ids') || '[]');
+            if (removed.phone) deletedIds.push(removed.phone);
+            if (removed.id) deletedIds.push(removed.id);
+            localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(deletedIds.slice(-200)));
+          } catch(e) {}
+
+          saveState(true);
+          updateAll();
+
+          // Sync deletion to server immediately
+          try {
+            fetchWithAuth('/api/webhooks/pancake?action=delete_lead', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phone: removed.phone, id: removed.id, leads }),
+              keepalive: true
+            });
+          } catch(e) {}
+
+          const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+          Toast.fire({ icon: 'success', title: `ลบเคส "${removed.name}" เรียบร้อยแล้ว` });
+        }
+      });
     }
 
     function clearAllLeads() {
@@ -1818,6 +1854,7 @@
         }
       });
     }
+
 
 
     // LINE Notification Generator
@@ -2357,12 +2394,25 @@ ${adSection}━━━━━━━━━━━━━━━━━━
           let hasChanges = false;
           let needsPushToCloud = false;
 
+          let deletedIds = [];
+          try {
+            deletedIds = JSON.parse(localStorage.getItem('pancake_deleted_lead_ids') || '[]');
+          } catch(e) {}
+
+          const validServerLeads = data.leads.filter(sl => {
+            if (!sl || !sl.phone) return false;
+            // Ignore test leads or leads explicitly deleted by user
+            if (deletedIds.includes(sl.phone) || (sl.id && deletedIds.includes(sl.id))) return false;
+            if (sl.phone === '0899999999' || sl.phone === '0891234567' || (sl.name && sl.name.includes('ทดสอบ'))) return false;
+            return true;
+          });
+
           // If local leads is empty (new device / fresh browser), populate all from cloud!
           if (leads.length === 0) {
-            leads = data.leads.map(l => ({ ...l, sales: l.sales === 'ลิ้น' ? 'อั๋น' : (l.sales || '') }));
+            leads = validServerLeads.map(l => ({ ...l, sales: l.sales === 'ลิ้น' ? 'อั๋น' : (l.sales || '') }));
             hasChanges = true;
           } else {
-            for (const serverLead of data.leads) {
+            for (const serverLead of validServerLeads) {
               const serverSales = serverLead.sales === 'ลิ้น' ? 'อั๋น' : (serverLead.sales || '');
               const existingIdx = leads.findIndex(l => (serverLead.id && l.id === serverLead.id) || l.phone === serverLead.phone);
               if (existingIdx !== -1) {
@@ -2379,7 +2429,6 @@ ${adSection}━━━━━━━━━━━━━━━━━━
                   local.sales = serverSales;
                   hasChanges = true;
                 }
-
 
                 // 2. Truck Type
                 if (local.truck && !serverLead.truck) {
@@ -2411,16 +2460,13 @@ ${adSection}━━━━━━━━━━━━━━━━━━
                   hasChanges = true;
                 }
 
-                // 6. Returning Customer Timestamp: Bring to TOP of table!
+                // 6. Returning Customer Timestamp: Bring to TOP of table
                 if (serverLead.date && serverLead.time && (serverLead.date !== local.date || serverLead.time !== local.time)) {
                   local.date = serverLead.date;
                   local.time = serverLead.time;
                   leads.splice(existingIdx, 1);
                   leads.unshift(local);
                   hasChanges = true;
-
-                  const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 4000 });
-                  Toast.fire({ icon: 'info', title: `🔔 ลูกค้าส่งเบอร์มาใหม่: ${local.name} (${local.phone})` });
                 }
               } else {
                 // New lead from PanCake or other device
@@ -2428,10 +2474,9 @@ ${adSection}━━━━━━━━━━━━━━━━━━
                 hasChanges = true;
                 scannedMessageCount++;
               }
-
             }
 
-            if (leads.length > data.leads.length) {
+            if (leads.length > validServerLeads.length) {
               needsPushToCloud = true;
             }
           }
@@ -2445,6 +2490,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
             saveState(true); // Persist local assignments to Cloud Database
           }
         }
+
       } catch(e) {
         console.warn('Sync error:', e.message);
       }

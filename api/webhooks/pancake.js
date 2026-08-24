@@ -366,7 +366,7 @@ function fetchCloudData() {
       res.on('end', () => {
         try {
           const json = JSON.parse(body);
-          if (json.data && Array.isArray(json.data.leads) && json.data.leads.length >= memoryLeads.length) {
+          if (json.data && Array.isArray(json.data.leads)) {
             memoryLeads = json.data.leads;
             if (Array.isArray(json.data.truckTypes) && json.data.truckTypes.length > 0) {
               memoryTruckTypes = json.data.truckTypes;
@@ -383,6 +383,7 @@ function fetchCloudData() {
     }).on('error', () => resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, logs: webhookLogs }));
   });
 }
+
 
 
 const GOOGLE_SHEETS_SCRIPT_URL = process.env.GOOGLE_SHEETS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzUdIU62Fx5-OS9Ldjx54O_HU5NJtt-C5RoFrF0k1OECVeTnFlyirdEheX6b88e8rBXmw/exec';
@@ -749,6 +750,24 @@ module.exports = async (req, res) => {
     });
   }
 
+  // ACTION: DELETE LEAD (Admin Only)
+  if (action === 'delete_lead') {
+    if (authUser.role === 'sales') {
+      recordAuditLog(req, clientIp, authUser.role, 403, 'delete_lead_forbidden');
+      return res.status(403).json({ error: 'Forbidden', message: 'Only Admin can delete leads' });
+    }
+    const delPhone = payload?.phone;
+    const delId = payload?.id;
+    if (Array.isArray(payload?.leads)) {
+      memoryLeads = payload.leads;
+    } else if (delPhone || delId) {
+      memoryLeads = memoryLeads.filter(l => (!delId || l.id !== delId) && (!delPhone || l.phone !== delPhone));
+    }
+    await saveCloudData(memoryLeads, memoryTruckTypes);
+    recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'delete_lead_success');
+    return res.status(200).json({ success: true, message: 'Lead deleted permanently', totalLeads: memoryLeads.length });
+  }
+
   // PUT / POST with sync action: Save state from frontend
   if (action === 'sync_trucks') {
     if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) {
@@ -758,6 +777,7 @@ module.exports = async (req, res) => {
       return res.status(200).json({ success: true, message: 'Truck types updated', truckTypes: memoryTruckTypes });
     }
   }
+
 
   if (action === 'sync_state') {
     // RBAC: Role-Based Access Control
