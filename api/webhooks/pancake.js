@@ -69,15 +69,20 @@ function cleanThaiPhoneNumber(rawPhone) {
 }
 
 function detectTruckType(text) {
-  if (!text) return 'หัวลาก';
+  if (!text) return '';
   const t = String(text).toLowerCase();
-  if (t.includes('ตู้') || t.includes('10 บาน')) return 'ตู้10';
+  for (const truck of memoryTruckTypes) {
+    if (truck !== 'อื่นๆ' && t.includes(truck.toLowerCase())) return truck;
+  }
+  if (t.includes('หัวลาก') || t.includes('ลาก')) return 'หัวลาก';
+  if (t.includes('ตู้') || t.includes('10 บาน') || t.includes('ตู้10')) return 'ตู้10';
   if (t.includes('หาง') || t.includes('ก้างปลา') || t.includes('เทรลเลอร์')) return 'หาง';
-  if (t.includes('ดั๊ม') || t.includes('ดัมพ์') || t.includes('ดั้มพ์')) return 'ดั๊ม';
-  if (t.includes('6 ล้อ') || t.includes('หกล้อ')) return '6 ล้อ';
+  if (t.includes('ดั๊ม') || t.includes('ดัมพ์') || t.includes('ดั้มพ์') || t.includes('dump')) return 'ดั๊ม';
+  if (t.includes('6 ล้อ') || t.includes('หกล้อ') || t.includes('6ล้อ')) return '6 ล้อ';
   if (t.includes('เครน')) return 'เครน';
-  return 'หัวลาก';
+  return '';
 }
+
 
 function resolveChannelSource(rawSource, querySource, payload) {
   if (querySource && typeof querySource === 'string' && querySource.trim()) {
@@ -747,12 +752,13 @@ module.exports = async (req, res) => {
         existing.source = finalSource;
         if (adSource) existing.ad = adSource;
         if (customerName !== 'ลูกค้า PanCake') existing.name = customerName;
-        if (truck && truck !== 'หัวลาก') existing.truck = truck;
+        if (truck) existing.truck = truck;
 
         leadObj.ad = existing.ad || adSource;
         leadObj.sales = existing.sales || '';
-        leadObj.truck = existing.truck || truck;
+        leadObj.truck = existing.truck || truck || '';
         leadObj.report = existing.report || '';
+
 
         // Move to the top of memory list!
         memoryLeads.splice(existingIdx, 1);

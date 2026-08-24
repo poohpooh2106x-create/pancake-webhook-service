@@ -868,7 +868,7 @@
         <select class="form-select" id="addSales">
           <option value="">-- รอเลือกเซลล์ --</option>
           <option value="วุธ">วุธ</option>
-          <option value="ลิ้น">ลิ้น</option>
+          <option value="อั๋น">อั๋น</option>
           <option value="ท็อป">ท็อป</option>
           <option value="จิ๊บ">จิ๊บ</option>
           <option value="เกด">เกด</option>
@@ -974,28 +974,23 @@
 
         <!-- Right: Truck & Ad Breakdown -->
         <div style="background: #090e17; border: 1px solid var(--border); border-radius: 8px; padding: 12px; max-height: 240px; overflow-y: auto;">
-          <div style="font-size: 12px; font-weight: 600; color: #38bdf8; margin-bottom: 8px;">
-            🚚 สรุปตามประเภทรถ
+          <div style="font-size: 12px; font-weight: 600; color: #38bdf8; margin-bottom: 8px; display: flex; justify-content: space-between;">
+            <span>🚚 สรุปตามประเภทรถ & แอด</span>
+            <span id="repTruckTotal">0 เคส</span>
           </div>
-          <div id="repTruckBreakdown" style="font-size: 11px; margin-bottom: 10px;">
+          <div id="repTruckBreakdown" style="font-size: 11px; line-height: 1.6; color: #cbd5e1;">
             <!-- Populated by JS -->
-          </div>
-          <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
-            <div style="font-size: 11px; font-weight: 600; color: #94a3b8; margin-bottom: 4px;">📢 แอดที่ทำผลงาน (Top Ads):</div>
-            <div id="repAdBreakdown" style="font-size: 11px;">
-              <!-- Populated by JS -->
-            </div>
           </div>
         </div>
       </div>
 
       <!-- Action Buttons -->
-      <div style="display: flex; gap: 10px; justify-content: space-between; flex-wrap: wrap;">
-        <button class="btn btn-excel" onclick="exportReportPeriodCSV()" style="flex: 1; justify-content: center; background: #0f766e; border-color: #14b8a6;">
-          📥 ส่งออก Excel ช่วงนี้
-        </button>
-        <button class="btn btn-add" onclick="copyDailyReportToLine()" style="flex: 1.5; justify-content: center; background: #059669;">
+      <div style="display: flex; gap: 10px; justify-content: flex-end; border-top: 1px solid var(--border); padding-top: 14px;">
+        <button class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: white; font-weight: 600; border: none; padding: 10px 18px; box-shadow: 0 4px 12px rgba(16,185,129,0.3);" onclick="copyDailyReportToLine()">
           📋 คัดลอกสรุปส่งไลน์กลุ่ม (LINE Report)
+        </button>
+        <button class="btn btn-excel" onclick="exportReportPeriodCSV()">
+          📥 ส่งออก Excel ช่วงนี้ (CSV)
         </button>
       </div>
     </div>
@@ -1006,7 +1001,7 @@
     // 8 Sales Team Members
     const SALES_TEAM = [
       { name: 'วุธ', badgeClass: 'badge-wuth' },
-      { name: 'ลิ้น', badgeClass: 'badge-lin' },
+      { name: 'อั๋น', badgeClass: 'badge-lin' },
       { name: 'ท็อป', badgeClass: 'badge-top' },
       { name: 'จิ๊บ', badgeClass: 'badge-jib' },
       { name: 'เกด', badgeClass: 'badge-ked' },
@@ -1017,7 +1012,7 @@
 
     // TRUCK TYPES (Customizable & Bulletproof Persistence)
     const DEFAULT_TRUCKS = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
-    const TRUCKS_STORAGE_KEY = 'pancake_truck_types_v2';
+    const TRUCKS_STORAGE_KEY = 'pancake_truck_types_v3';
     let truckTypes = [...DEFAULT_TRUCKS];
     let lastTruckEditTime = 0;
 
@@ -1046,7 +1041,7 @@
 
     // Load Truck Types (Multi-layer)
     function loadTruckTypes() {
-      const keys = [TRUCKS_STORAGE_KEY, 'pancake_truck_types_master', 'pancake_truck_types_v1', 'pancake_truck_types'];
+      const keys = [TRUCKS_STORAGE_KEY, 'pancake_truck_types_master', 'pancake_truck_types_v2'];
       for (const k of keys) {
         const saved = localStorage.getItem(k);
         if (saved) {
@@ -1376,11 +1371,12 @@
               arr.forEach(l => {
                 const key = l.phone || l.id;
                 if (key && !masterMap.has(key)) {
+                  const salesName = l.sales === 'ลิ้น' ? 'อั๋น' : (l.sales || '');
                   masterMap.set(key, {
                     ...l,
                     source: sanitizeChannelName(l.source),
-                    truck: l.truck || 'หัวลาก',
-                    sales: l.sales || '',
+                    truck: l.truck || '',
+                    sales: salesName,
                     ad: l.ad || '',
                     report: l.report || ''
                   });
@@ -1403,11 +1399,12 @@
                 req.result.data.forEach(l => {
                   const key = l.phone || l.id;
                   if (key && !masterMap.has(key)) {
+                    const salesName = l.sales === 'ลิ้น' ? 'อั๋น' : (l.sales || '');
                     masterMap.set(key, {
                       ...l,
                       source: sanitizeChannelName(l.source),
-                      truck: l.truck || 'หัวลาก',
-                      sales: l.sales || '',
+                      truck: l.truck || '',
+                      sales: salesName,
                       ad: l.ad || '',
                       report: l.report || ''
                     });
@@ -1430,10 +1427,11 @@
             data.leads.forEach(serverLead => {
               const key = serverLead.phone || serverLead.id;
               if (key) {
+                const serverSales = serverLead.sales === 'ลิ้น' ? 'อั๋น' : (serverLead.sales || '');
                 if (masterMap.has(key)) {
                   // Merge fields intelligently: keep local sales if server is empty
                   const existing = masterMap.get(key);
-                  if (!existing.sales && serverLead.sales) existing.sales = serverLead.sales;
+                  if (!existing.sales && serverSales) existing.sales = serverSales;
                   if (!existing.truck && serverLead.truck) existing.truck = serverLead.truck;
                   if (!existing.ad && serverLead.ad) existing.ad = serverLead.ad;
                   if (!existing.report && serverLead.report) existing.report = serverLead.report;
@@ -1443,8 +1441,8 @@
                   masterMap.set(key, {
                     ...serverLead,
                     source: sanitizeChannelName(serverLead.source),
-                    truck: serverLead.truck || 'หัวลาก',
-                    sales: serverLead.sales || '',
+                    truck: serverLead.truck || '',
+                    sales: serverSales,
                     ad: serverLead.ad || '',
                     report: serverLead.report || ''
                   });
@@ -1453,8 +1451,10 @@
             });
           }
           if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
-            truckTypes = Array.from(new Set([...truckTypes, ...data.truckTypes]));
-            populateTruckSelectInputs();
+            if (Date.now() - lastTruckEditTime > 10000) {
+              truckTypes = [...data.truckTypes];
+              populateTruckSelectInputs();
+            }
           }
           if (data.webhookLogs && Array.isArray(data.webhookLogs)) {
             document.getElementById('logCountBadge').innerText = data.webhookLogs.length;
@@ -1464,6 +1464,7 @@
       } catch(e) {
         console.warn('Could not fetch cloud data, using local master cache:', e);
       }
+
 
       // Finalize leads array with complete merged data
       leads = Array.from(masterMap.values());
@@ -1549,13 +1550,18 @@
 
 
     function detectTruckType(text) {
-      if (!text) return 'หัวลาก';
+      if (!text) return '';
       const t = text.toLowerCase();
-      if (t.includes('ตู้') || t.includes('10 บาน')) return 'ตู้10';
+      for (const truck of truckTypes) {
+        if (truck !== 'อื่นๆ' && t.includes(truck.toLowerCase())) return truck;
+      }
+      if (t.includes('หัวลาก') || t.includes('ลาก')) return 'หัวลาก';
+      if (t.includes('ตู้') || t.includes('10 บาน') || t.includes('ตู้10')) return 'ตู้10';
       if (t.includes('หาง') || t.includes('ก้างปลา') || t.includes('เทรลเลอร์')) return 'หาง';
-      if (t.includes('ดั๊ม') || t.includes('ดัมพ์') || t.includes('ดั้มพ์')) return 'ดั๊ม';
-      if (t.includes('6 ล้อ') || t.includes('หกล้อ')) return '6 ล้อ';
-      return 'หัวลาก';
+      if (t.includes('ดั๊ม') || t.includes('ดัมพ์') || t.includes('ดั้มพ์') || t.includes('dump')) return 'ดั๊ม';
+      if (t.includes('6 ล้อ') || t.includes('หกล้อ') || t.includes('6ล้อ')) return '6 ล้อ';
+      if (t.includes('เครน')) return 'เครน';
+      return '';
     }
 
     function getNowThai() {
@@ -1661,7 +1667,8 @@
               <a href="tel:${lead.phone}" style="color: inherit; text-decoration: none;" title="กดเพื่อโทร">${lead.phone}</a>
             </td>
             <td>
-              <select class="select-sm" onchange="updateLeadTruck(${realIdx}, this.value)">
+              <select class="select-sm" style="${lead.truck ? 'border-color: #38bdf8; color: #38bdf8;' : 'border-color: #f59e0b; color: #fbbf24;'}" onchange="updateLeadTruck(${realIdx}, this.value)">
+                <option value="">-- เลือกรถ --</option>
                 ${truckOptionsHtml}
               </select>
             </td>
@@ -1699,6 +1706,15 @@
       }).join('');
     }
 
+    function updateLeadTruck(idx, val) {
+      if (leads[idx]) {
+        leads[idx].truck = val;
+        saveState();
+        try { updateCharts(); } catch(e) {}
+        renderTable();
+      }
+    }
+
     function updateLeadReport(idx, val) {
       if (leads[idx]) {
         leads[idx].report = val;
@@ -1706,6 +1722,7 @@
         showSaveIndicator('บันทึกรีพอร์ตเซลล์แล้ว 💾');
       }
     }
+
 
 
     function sanitizeChannelName(source) {
@@ -1724,14 +1741,6 @@
         leads[idx].source = val;
         saveState();
         renderTable();
-      }
-    }
-
-    function updateLeadTruck(idx, val) {
-      if (leads[idx]) {
-        leads[idx].truck = val;
-        saveState();
-        try { updateCharts(); } catch(e) {}
       }
     }
 
@@ -1797,7 +1806,7 @@
                   adText +
                   `👤 ชื่อลูกค้า: ${l.name}\n` +
                   `📞 เบอร์โทร: ${l.phone}\n` +
-                  `🚚 รถที่สนใจ: ${l.truck || 'หัวลาก'}\n` +
+                  `🚚 รถที่สนใจ: ${l.truck || 'ยังไม่ได้ระบุ'}\n` +
                   `⏰ เวลาที่ติดต่อ: ${l.date} (${l.time})\n` +
                   `🛡️ ${salesText}\n` +
                   `━━━━━━━━━━━━━━━━━━\n` +
@@ -1813,97 +1822,62 @@
           cancelButtonText: 'ปิด'
         }).then((res) => {
           if (res.isConfirmed) {
-            window.open('https://line.me/R/', '_blank');
+            window.open('https://line.me/R/msg/text/?' + encodeURIComponent(msg), '_blank');
           }
         });
       });
     }
 
-    // Backup & Restore
-    function backupJSON() {
-      if (leads.length === 0) {
-        Swal.fire('ไม่มีข้อมูล', 'ยังไม่มีข้อมูลเคสลูกค้าสำหรับสำรอง', 'info');
-        return;
-      }
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(leads, null, 2));
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute("download", `pancake_crm_backup_${new Date().toISOString().slice(0,10)}.json`);
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      downloadAnchor.remove();
-      Swal.fire('สำรองข้อมูลเรียบร้อย', 'ดาวน์โหลดไฟล์สำรองเก็บไว้ในเครื่องเรียบร้อยแล้ว', 'success');
-    }
-
-    function restoreJSON() {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.json';
-      input.onchange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          try {
-            const imported = JSON.parse(event.target.result);
-            if (Array.isArray(imported)) {
-              leads = imported;
-              saveState();
-              updateAll();
-              Swal.fire('กู้คืนสำเร็จ', `นำเข้าข้อมูลทั้งหมด ${leads.length} เคสเรียบร้อยแล้ว`, 'success');
-            } else {
-              Swal.fire('ไฟล์ไม่ถูกต้อง', 'โครงสร้างไฟล์ JSON ไม่ถูกต้อง', 'error');
-            }
-          } catch(err) {
-            Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถอ่านไฟล์ได้', 'error');
-          }
-        };
-        reader.readAsText(file);
-      };
-      input.click();
-    }
-
+    // CSV Export Function (Multi-device friendly)
     function exportToCSV() {
       if (leads.length === 0) {
-        Swal.fire('ไม่มีข้อมูล', 'ยังไม่มีข้อมูลเคสลูกค้าสำหรับส่งออก', 'info');
+        Swal.fire('ไม่มีข้อมูล', 'ยังไม่มีรายการเคสลูกค้าสำหรับ Export', 'info');
         return;
       }
-      let csv = '\uFEFFวันที่รับ,เวลา,ที่มา,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,ชื่อแอด,เซลล์ที่รับ,รีพอร์ตเซลล์\n';
+
+      let csv = '\uFEFF'; // BOM for Thai Excel
+      csv += 'วันที่,เวลา,ที่มา (Channel),ชื่อแอด/คลิป,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,เซลล์ที่รับผิดชอบ,รีพอร์ตจากเซลล์\n';
+
       leads.forEach(l => {
-        csv += `"${l.date}","${l.time}","${l.source}","${l.name}","\t${l.phone}","${l.truck}","${l.ad || ''}","${l.sales}","${(l.report || '').replace(/"/g, '""')}"\n`;
+        const row = [
+          `"${l.date || ''}"`,
+          `"${l.time || ''}"`,
+          `"${(l.source || '').replace(/"/g, '""')}"`,
+          `"${(l.ad || '').replace(/"/g, '""')}"`,
+          `"${(l.name || '').replace(/"/g, '""')}"`,
+          `"${l.phone || ''}"`,
+          `"${(l.truck || 'ยังไม่ระบุ').replace(/"/g, '""')}"`,
+          `"${(l.sales || '').replace(/"/g, '""')}"`,
+          `"${(l.report || '').replace(/"/g, '""')}"`
+        ];
+        csv += row.join(',') + '\n';
       });
+
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `pancake_leads_${new Date().toISOString().slice(0,10)}.csv`;
-      link.click();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const today = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `pancake_crm_leads_${today}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     }
 
-
     // ----------------------------------------------------
-    // SALES REPORT & MANAGEMENT SUMMARY ENGINE
+    // DAILY REPORT GENERATOR & LINE INTEGRATION ENGINE
     // ----------------------------------------------------
     let currentReportPeriod = 'today';
     let currentReportCustomDate = '';
 
     function openReportModal() {
-      document.getElementById('reportModal').style.display = 'flex';
       setReportPeriod('today', document.getElementById('repBtnToday'));
+      document.getElementById('reportModal').style.display = 'flex';
     }
 
-    function setReportPeriod(period, btn) {
+    function setReportPeriod(period, btnElement) {
       currentReportPeriod = period;
-      currentReportCustomDate = '';
-      if (document.getElementById('reportDatePicker')) {
-        document.getElementById('reportDatePicker').value = '';
-      }
-
-      document.querySelectorAll('.rep-filter-btn').forEach(b => {
-        b.style.background = '#090e17';
-        b.style.color = 'var(--text-muted)';
-        b.style.borderColor = 'var(--border)';
-      });
-
       if (btn) {
         btn.style.background = '#2563eb';
         btn.style.color = 'white';
@@ -2014,7 +1988,7 @@
       // 2. Truck Breakdown
       const truckMap = {};
       filtered.forEach(l => {
-        const t = l.truck || 'หัวลาก';
+        const t = l.truck ? l.truck : 'ยังไม่ระบุประเภทรถ';
         truckMap[t] = (truckMap[t] || 0) + 1;
       });
       const truckEntries = Object.entries(truckMap).sort((a, b) => b[1] - a[1]);
@@ -2080,12 +2054,13 @@
       // Truck breakdown text
       const truckMap = {};
       filtered.forEach(l => {
-        const t = l.truck || 'หัวลาก';
+        const t = l.truck ? l.truck : 'ยังไม่ระบุประเภทรถ';
         truckMap[t] = (truckMap[t] || 0) + 1;
       });
       const truckLines = Object.entries(truckMap)
         .map(([t, c]) => `  • ${t}: ${c} เคส`)
         .join('\n') || '  • (ไม่มีข้อมูล)';
+
 
       // Top Ads text
       const adMap = {};
@@ -2340,9 +2315,9 @@ ${adSection}━━━━━━━━━━━━━━━━━━
         // Sync custom truck types from cloud smoothly without reverting local changes
         if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
           if (Date.now() - lastTruckEditTime > 15000) {
-            const merged = Array.from(new Set([...truckTypes, ...data.truckTypes]));
-            if (JSON.stringify(truckTypes) !== JSON.stringify(merged)) {
-              truckTypes = merged;
+            const serverTrucks = data.truckTypes;
+            if (JSON.stringify(truckTypes) !== JSON.stringify(serverTrucks)) {
+              truckTypes = [...serverTrucks];
               populateTruckSelectInputs();
               renderTruckTypesList();
             }
@@ -2356,24 +2331,27 @@ ${adSection}━━━━━━━━━━━━━━━━━━
 
           // If local leads is empty (new device / fresh browser), populate all from cloud!
           if (leads.length === 0) {
-            leads = data.leads;
+            leads = data.leads.map(l => ({ ...l, sales: l.sales === 'ลิ้น' ? 'อั๋น' : (l.sales || '') }));
             hasChanges = true;
           } else {
             for (const serverLead of data.leads) {
+              const serverSales = serverLead.sales === 'ลิ้น' ? 'อั๋น' : (serverLead.sales || '');
               const existingIdx = leads.findIndex(l => (serverLead.id && l.id === serverLead.id) || l.phone === serverLead.phone);
               if (existingIdx !== -1) {
                 const local = leads[existingIdx];
+                if (local.sales === 'ลิ้น') { local.sales = 'อั๋น'; hasChanges = true; }
 
                 // 1. Sales Assignment (NEVER overwrite a filled local sales rep with an empty server sales)
-                if (local.sales && !serverLead.sales) {
+                if (local.sales && !serverSales) {
                   needsPushToCloud = true; // Local has sales, notify cloud
-                } else if (!local.sales && serverLead.sales) {
-                  local.sales = serverLead.sales;
+                } else if (!local.sales && serverSales) {
+                  local.sales = serverSales;
                   hasChanges = true;
-                } else if (local.sales && serverLead.sales && local.sales !== serverLead.sales) {
-                  local.sales = serverLead.sales;
+                } else if (local.sales && serverSales && local.sales !== serverSales) {
+                  local.sales = serverSales;
                   hasChanges = true;
                 }
+
 
                 // 2. Truck Type
                 if (local.truck && !serverLead.truck) {
