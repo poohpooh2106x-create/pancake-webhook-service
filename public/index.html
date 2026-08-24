@@ -1012,32 +1012,8 @@
 
     // TRUCK TYPES (Customizable & Bulletproof Persistence)
     const DEFAULT_TRUCKS = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
-    const TRUCKS_STORAGE_KEY = 'pancake_truck_types_v3';
+    const TRUCKS_STORAGE_KEY = 'pancake_truck_types_v5';
     let truckTypes = [...DEFAULT_TRUCKS];
-    let lastTruckEditTime = 0;
-
-    // STATE & BULLETPROOF PERSISTENCE ENGINE
-    const MASTER_LEADS_KEY = 'pancake_crm_master_leads';
-    const BACKUP_LEADS_KEY = 'pancake_crm_permanent_backup';
-    const SCANNED_KEY = 'pancake_scanned_count_v3';
-    const DB_NAME = 'PancakeCRM_DB';
-    const DB_STORE = 'leads_store';
-
-    let leads = [];
-    let scannedMessageCount = 0;
-    let currentFilter = 'ทั้งหมด';
-    let db = null;
-
-    let truckChartInstance = null;
-    let salesChartInstance = null;
-    let latestServerLogs = [];
-
-    // TRUCK COLORS PALETTE FOR CHART
-    const CHART_COLORS = [
-      '#f97316', '#3b82f6', '#10b981', '#a855f7', 
-      '#06b6d4', '#ec4899', '#eab308', '#6366f1', 
-      '#14b8a6', '#f43f5e', '#84cc16', '#8b5cf6'
-    ];
 
     // Load Truck Types (Direct user list, NEVER re-merges deleted trucks)
     function loadTruckTypes() {
@@ -1057,10 +1033,10 @@
     }
 
     function saveTruckTypes() {
-      lastTruckEditTime = Date.now();
       try {
         localStorage.setItem(TRUCKS_STORAGE_KEY, JSON.stringify(truckTypes));
         localStorage.setItem('pancake_truck_types_master', JSON.stringify(truckTypes));
+        localStorage.setItem('pancake_trucks_user_customized', 'true');
       } catch(e) {}
 
       populateTruckSelectInputs();
@@ -1068,9 +1044,19 @@
       renderTable();
       try { updateCharts(); } catch(e) {}
 
-      // Immediately sync customized truck types to Cloud Database!
+      // Fast sync with keepalive so page reload never cancels it
+      try {
+        fetchWithAuth('/api/webhooks/pancake?action=sync_trucks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ truckTypes }),
+          keepalive: true
+        });
+      } catch(e) {}
+
       saveState(true);
     }
+
 
     function openTruckManageModal() {
       renderTruckTypesList();
@@ -2329,9 +2315,9 @@ ${adSection}━━━━━━━━━━━━━━━━━━
           latestServerLogs = data.webhookLogs;
         }
 
-        // Sync custom truck types from cloud smoothly without reverting local changes
+        // Sync custom truck types from cloud only for new devices that haven't customized locally
         if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
-          if (Date.now() - lastTruckEditTime > 15000) {
+          if (!localStorage.getItem(TRUCKS_STORAGE_KEY) && !localStorage.getItem('pancake_trucks_user_customized')) {
             const serverTrucks = data.truckTypes;
             if (JSON.stringify(truckTypes) !== JSON.stringify(serverTrucks)) {
               truckTypes = [...serverTrucks];
@@ -2340,6 +2326,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
             }
           }
         }
+
 
         // Sync all leads from cloud across all devices with smart merging
         if (Array.isArray(data.leads) && data.leads.length > 0) {

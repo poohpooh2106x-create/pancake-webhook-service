@@ -585,6 +585,15 @@ module.exports = async (req, res) => {
   }
 
   // PUT / POST with sync action: Save state from frontend
+  if (action === 'sync_trucks') {
+    if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) {
+      memoryTruckTypes = payload.truckTypes;
+      await saveCloudData(memoryLeads, memoryTruckTypes);
+      recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_truck_types');
+      return res.status(200).json({ success: true, message: 'Truck types updated', truckTypes: memoryTruckTypes });
+    }
+  }
+
   if (action === 'sync_state') {
     // RBAC: Role-Based Access Control
     if (authUser.role === 'sales') {
@@ -605,7 +614,7 @@ module.exports = async (req, res) => {
 
     // Admin has full control
     if (Array.isArray(payload?.leads)) memoryLeads = payload.leads;
-    if (Array.isArray(payload?.truckTypes)) memoryTruckTypes = payload.truckTypes;
+    if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) memoryTruckTypes = payload.truckTypes;
     await saveCloudData(memoryLeads, memoryTruckTypes);
     await syncToGoogleSheets(memoryLeads);
     recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_admin_state');
@@ -616,6 +625,7 @@ module.exports = async (req, res) => {
       role: authUser.role || 'admin'
     });
   }
+
 
   // DELETE: Clear server logs (Admin Only)
   if (req.method === 'DELETE') {
