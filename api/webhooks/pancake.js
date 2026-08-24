@@ -131,35 +131,83 @@ function recordLeadDedupe(id, phone) {
 function extractAdSource(payload) {
   if (!payload || typeof payload !== 'object') return '';
 
-  // 1. Direct Ad fields from PanCake / Meta
-  const direct = payload.ad_name || payload.ad_title || payload.ad || '';
-  if (direct && typeof direct === 'string') return direct.trim();
+  // 1. Direct & Nested known fields from Meta & PanCake
+  const candidates = [
+    payload.ads_context_data?.ad_title,
+    payload.ads_context_data?.ad_name,
+    payload.referral?.ads_context_data?.ad_title,
+    payload.referral?.ads_context_data?.ad_name,
+    payload.referral?.ad_title,
+    payload.referral?.ad_name,
+    payload.referral?.title,
+    payload.data?.ads_context_data?.ad_title,
+    payload.data?.referral?.ads_context_data?.ad_title,
+    payload.data?.referral?.ad_title,
+    payload.data?.referral?.ad_name,
+    payload.data?.ad_name,
+    payload.data?.ad_title,
+    payload.ad_name,
+    payload.ad_title,
+    payload.ad,
+    payload.post?.name,
+    payload.post?.title,
+    payload.post?.message,
+    payload.post_name,
+    payload.post_title,
+    payload.pancake_customer_obj?.ad_name,
+    payload.pancake_customer_obj?.ad_title,
+    payload.pancake_customer_obj?.referral?.ad_title,
+    payload.extra_infor?.ad_name,
+    payload.extra_infor?.ad_title,
+    payload.extra_infor?.ad,
+    payload.utm_campaign,
+    payload.utm_content
+  ];
 
-  // 2. Referral object in PanCake payload
-  if (payload.referral && typeof payload.referral === 'object') {
-    const ref = payload.referral.ad_title || payload.referral.ad_name || payload.referral.title || payload.referral.ad_id || '';
-    if (ref && typeof ref === 'string') return ref.trim();
+  for (const c of candidates) {
+    if (c && typeof c === 'string' && c.trim()) return c.trim();
   }
 
-  // 3. Data referral / data ad
-  if (payload.data && typeof payload.data === 'object') {
-    const dAd = payload.data.ad_name || payload.data.ad_title || payload.data.referral?.ad_title || payload.data.referral?.ad_name || '';
-    if (dAd && typeof dAd === 'string') return dAd.trim();
+  // 2. Facebook Messenger Webhook structure (entry[0].messaging[0].referral)
+  if (Array.isArray(payload.entry)) {
+    for (const e of payload.entry) {
+      if (Array.isArray(e.messaging)) {
+        for (const m of e.messaging) {
+          const mRef = m.referral?.ads_context_data?.ad_title || m.referral?.ad_title || m.referral?.ad_name || m.referral?.ref || '';
+          if (mRef && typeof mRef === 'string' && mRef.trim()) return mRef.trim();
+        }
+      }
+    }
   }
 
-  // 4. UTM Campaign / Content
-  if (payload.utm_campaign && typeof payload.utm_campaign === 'string') return payload.utm_campaign.trim();
-  if (payload.utm_content && typeof payload.utm_content === 'string') return payload.utm_content.trim();
-  if (payload.utm_term && typeof payload.utm_term === 'string') return payload.utm_term.trim();
-
-  // 5. Extra info / fields
-  if (payload.extra_infor && typeof payload.extra_infor === 'object') {
-    const extra = payload.extra_infor.ad_name || payload.extra_infor.ad_title || payload.extra_infor.ad || '';
-    if (extra && typeof extra === 'string') return extra.trim();
+  // 3. Fallback: Deep recursive search for keys like ad_title, ad_name, ads_context_data
+  let foundAd = '';
+  function deepSearch(obj, depth = 0) {
+    if (!obj || depth > 5 || foundAd) return;
+    if (typeof obj === 'object') {
+      for (const [k, v] of Object.entries(obj)) {
+        if (typeof v === 'string' && v.trim()) {
+          const lk = k.toLowerCase();
+          if (lk === 'ad_title' || lk === 'ad_name' || lk === 'adtitle' || lk === 'adname' || lk === 'campaign_name') {
+            foundAd = v.trim();
+            return;
+          }
+        } else if (typeof v === 'object' && v !== null) {
+          deepSearch(v, depth + 1);
+        }
+      }
+    }
   }
+  deepSearch(payload);
+  if (foundAd) return foundAd;
+
+  // 4. Ad ID fallback if name is not available
+  const adId = payload.referral?.ad_id || payload.data?.referral?.ad_id || payload.ad_id || '';
+  if (adId) return `Ad ID: ${adId}`;
 
   return '';
 }
+
 
 // Cloud Storage Helpers (Global Multi-Device Sync & Persistent Logs)
 
