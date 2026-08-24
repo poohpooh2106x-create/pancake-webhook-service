@@ -780,6 +780,9 @@ module.exports = async (req, res) => {
         const target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
         if (target && payload.lead.report !== undefined) {
           target.report = payload.lead.report;
+          await syncToGoogleSheets(target);
+        } else {
+          await syncToGoogleSheets(payload.lead);
         }
       }
       await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
@@ -798,6 +801,10 @@ module.exports = async (req, res) => {
         if (payload.lead.sales !== undefined) target.sales = payload.lead.sales;
         if (payload.lead.truck !== undefined) target.truck = payload.lead.truck;
         if (payload.lead.date !== undefined) target.date = payload.lead.date;
+        if (payload.lead.source !== undefined) target.source = payload.lead.source;
+        await syncToGoogleSheets(target);
+      } else {
+        await syncToGoogleSheets(payload.lead);
       }
     }
     if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) memoryTruckTypes = payload.truckTypes;
