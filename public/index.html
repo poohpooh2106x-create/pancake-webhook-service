@@ -586,6 +586,9 @@
       </div>
 
       <div class="nav-actions">
+        <button class="btn" style="background: linear-gradient(135deg, #6366f1, #3b82f6); color: white; border: none; font-weight: 600; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);" onclick="openReportModal()" title="ดูรีพอร์ตสรุปประจำวัน & คัดลอกส่งผู้บริหาร">
+          📊 รายงานประจำวัน (Report)
+        </button>
         <button class="btn btn-webhook" onclick="copyWebhookUrl()">
           🔗 /api/webhooks/pancake 📋
         </button>
@@ -614,6 +617,7 @@
           🗑️
         </button>
       </div>
+
     </header>
 
     <!-- METRICS (4 CARDS) -->
@@ -884,14 +888,104 @@
       <div id="liveLogsContent" style="background: #090e17; border: 1px solid var(--border); border-radius: 8px; padding: 14px; max-height: 360px; overflow-y: auto; font-family: monospace; font-size: 12px; color: #38bdf8;">
         กำลังโหลด Log ล่าสุด...
       </div>
-      <div style="display: flex; justify-content: space-between; margin-top: 12px;">
-        <button class="btn btn-excel" onclick="fetchLiveLogs()">🔄 รีเฟรช Log ตอนนี้</button>
-        <button class="btn btn-trash" onclick="clearServerLogs()">🗑️ ล้างประวัติ Log</button>
+  <!-- DAILY REPORT MODAL -->
+  <div class="modal-overlay" id="reportModal">
+    <div class="modal-card" style="max-width: 780px;">
+      <div class="modal-head">
+        <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+          📊 <span>รายงานสรุปภาพรวม & การแจกงาน (Sales Report)</span>
+        </div>
+        <button class="btn-close" onclick="closeModal('reportModal')">&times;</button>
+      </div>
+
+      <!-- Date Filter Toolbar -->
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;">
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="reportFilterButtons">
+          <button class="btn-refresh rep-filter-btn" id="repBtnToday" onclick="setReportPeriod('today', this)" style="background: #2563eb; color: white; border-color: #3b82f6;">วันนี้</button>
+          <button class="btn-refresh rep-filter-btn" id="repBtnYesterday" onclick="setReportPeriod('yesterday', this)">เมื่อวาน</button>
+          <button class="btn-refresh rep-filter-btn" id="repBtn7days" onclick="setReportPeriod('7days', this)">7 วันล่าสุด</button>
+          <button class="btn-refresh rep-filter-btn" id="repBtnMonth" onclick="setReportPeriod('month', this)">เดือนนี้</button>
+          <button class="btn-refresh rep-filter-btn" id="repBtnAll" onclick="setReportPeriod('all', this)">ทั้งหมด</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 11px; color: var(--text-muted);">หรือเลือกวันที่:</span>
+          <input type="date" id="reportDatePicker" class="search-input" style="width: 140px; padding: 4px 8px; font-size: 11px;" onchange="setReportCustomDate(this.value)">
+        </div>
+      </div>
+
+      <!-- Summary KPI 4 Cards -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px;">
+        <div style="background: #090e17; border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
+          <div style="font-size: 11px; color: var(--text-muted);">รวมเคสทั้งหมด</div>
+          <div id="repTotalLeads" style="font-size: 22px; font-weight: 700; color: #38bdf8;">0</div>
+        </div>
+        <div style="background: #090e17; border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
+          <div style="font-size: 11px; color: var(--text-muted);">จ่ายงานเซลล์แล้ว</div>
+          <div id="repAssignedLeads" style="font-size: 22px; font-weight: 700; color: #34d399;">0</div>
+        </div>
+        <div style="background: #090e17; border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
+          <div style="font-size: 11px; color: var(--text-muted);">รอเลือกเซลล์</div>
+          <div id="repPendingLeads" style="font-size: 22px; font-weight: 700; color: #fbbf24;">0</div>
+        </div>
+        <div style="background: #090e17; border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
+          <div style="font-size: 11px; color: var(--text-muted);">ช่วงเวลาที่เลือก</div>
+          <div id="repPeriodLabel" style="font-size: 12px; font-weight: 600; color: #f1f5f9; margin-top: 6px;">วันนี้</div>
+        </div>
+      </div>
+
+      <!-- Report Tables Grid (2 columns: Sales Breakdown & Trucks/Ads) -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
+        <!-- Left: Sales Rep Distribution -->
+        <div style="background: #090e17; border: 1px solid var(--border); border-radius: 8px; padding: 12px; max-height: 240px; overflow-y: auto;">
+          <div style="font-size: 12px; font-weight: 600; color: #34d399; margin-bottom: 8px; display: flex; justify-content: space-between;">
+            <span>👥 สรุปการกระจายเคส (8 เซลล์)</span>
+            <span id="repSalesTotal">0 เคส</span>
+          </div>
+          <table style="width: 100%; font-size: 11px;">
+            <thead>
+              <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+                <th style="padding: 4px 6px;">ชื่อเซลล์</th>
+                <th style="padding: 4px 6px; text-align: right;">จำนวนเคส</th>
+                <th style="padding: 4px 6px; text-align: right;">สัดส่วน</th>
+              </tr>
+            </thead>
+            <tbody id="repSalesTableBody">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Right: Truck & Ad Breakdown -->
+        <div style="background: #090e17; border: 1px solid var(--border); border-radius: 8px; padding: 12px; max-height: 240px; overflow-y: auto;">
+          <div style="font-size: 12px; font-weight: 600; color: #38bdf8; margin-bottom: 8px;">
+            🚚 สรุปตามประเภทรถ
+          </div>
+          <div id="repTruckBreakdown" style="font-size: 11px; margin-bottom: 10px;">
+            <!-- Populated by JS -->
+          </div>
+          <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+            <div style="font-size: 11px; font-weight: 600; color: #94a3b8; margin-bottom: 4px;">📢 แอดที่ทำผลงาน (Top Ads):</div>
+            <div id="repAdBreakdown" style="font-size: 11px;">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display: flex; gap: 10px; justify-content: space-between; flex-wrap: wrap;">
+        <button class="btn btn-excel" onclick="exportReportPeriodCSV()" style="flex: 1; justify-content: center; background: #0f766e; border-color: #14b8a6;">
+          📥 ส่งออก Excel ช่วงนี้
+        </button>
+        <button class="btn btn-add" onclick="copyDailyReportToLine()" style="flex: 1.5; justify-content: center; background: #059669;">
+          📋 คัดลอกสรุปส่งไลน์กลุ่ม (LINE Report)
+        </button>
       </div>
     </div>
   </div>
 
   <script>
+
     // 8 Sales Team Members
     const SALES_TEAM = [
       { name: 'วุธ', badgeClass: 'badge-wuth' },
@@ -1555,6 +1649,273 @@
       link.download = `pancake_leads_${new Date().toISOString().slice(0,10)}.csv`;
       link.click();
     }
+
+    // ----------------------------------------------------
+    // SALES REPORT & MANAGEMENT SUMMARY ENGINE
+    // ----------------------------------------------------
+    let currentReportPeriod = 'today';
+    let currentReportCustomDate = '';
+
+    function openReportModal() {
+      document.getElementById('reportModal').style.display = 'flex';
+      setReportPeriod('today', document.getElementById('repBtnToday'));
+    }
+
+    function setReportPeriod(period, btn) {
+      currentReportPeriod = period;
+      currentReportCustomDate = '';
+      if (document.getElementById('reportDatePicker')) {
+        document.getElementById('reportDatePicker').value = '';
+      }
+
+      document.querySelectorAll('.rep-filter-btn').forEach(b => {
+        b.style.background = '#090e17';
+        b.style.color = 'var(--text-muted)';
+        b.style.borderColor = 'var(--border)';
+      });
+
+      if (btn) {
+        btn.style.background = '#2563eb';
+        btn.style.color = 'white';
+        btn.style.borderColor = '#3b82f6';
+      }
+
+      renderReportData();
+    }
+
+    function setReportCustomDate(val) {
+      if (!val) return;
+      currentReportCustomDate = val; // e.g. "2026-08-24"
+      currentReportPeriod = 'custom';
+
+      document.querySelectorAll('.rep-filter-btn').forEach(b => {
+        b.style.background = '#090e17';
+        b.style.color = 'var(--text-muted)';
+        b.style.borderColor = 'var(--border)';
+      });
+
+      renderReportData();
+    }
+
+    function parseLeadDate(dateStr) {
+      if (!dateStr) return null;
+      // Format: "DD/MM/YYYY" (e.g. 24/08/2026)
+      const parts = dateStr.split('/');
+      if (parts.length === 3) {
+        return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00+07:00`);
+      }
+      return new Date(dateStr);
+    }
+
+    function getFilteredReportLeads() {
+      const now = new Date();
+      const todayStr = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', year: 'numeric' }).format(now);
+      
+      const yestDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const yestStr = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', year: 'numeric' }).format(yestDate);
+
+      if (currentReportPeriod === 'today') {
+        return leads.filter(l => l.date === todayStr);
+      }
+      if (currentReportPeriod === 'yesterday') {
+        return leads.filter(l => l.date === yestStr);
+      }
+      if (currentReportPeriod === '7days') {
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return leads.filter(l => {
+          const d = parseLeadDate(l.date);
+          return d && d >= sevenDaysAgo;
+        });
+      }
+      if (currentReportPeriod === 'month') {
+        const currentMonth = todayStr.slice(3); // "08/2026"
+        return leads.filter(l => l.date && l.date.endsWith(currentMonth));
+      }
+      if (currentReportPeriod === 'custom' && currentReportCustomDate) {
+        // currentReportCustomDate = "YYYY-MM-DD"
+        const [y, m, d] = currentReportCustomDate.split('-');
+        const targetStr = `${d}/${m}/${y}`;
+        return leads.filter(l => l.date === targetStr);
+      }
+      return leads;
+    }
+
+    function renderReportData() {
+      const filtered = getFilteredReportLeads();
+      const total = filtered.length;
+      const assigned = filtered.filter(l => l.sales && l.sales.trim() !== '').length;
+      const pending = total - assigned;
+
+      document.getElementById('repTotalLeads').innerText = total;
+      document.getElementById('repAssignedLeads').innerText = assigned;
+      document.getElementById('repPendingLeads').innerText = pending;
+
+      let periodLabel = 'ทั้งหมด';
+      if (currentReportPeriod === 'today') periodLabel = 'วันนี้';
+      else if (currentReportPeriod === 'yesterday') periodLabel = 'เมื่อวาน';
+      else if (currentReportPeriod === '7days') periodLabel = '7 วันล่าสุด';
+      else if (currentReportPeriod === 'month') periodLabel = 'เดือนนี้';
+      else if (currentReportPeriod === 'custom') periodLabel = currentReportCustomDate;
+      document.getElementById('repPeriodLabel').innerText = periodLabel;
+
+      // 1. Sales Distribution Table
+      document.getElementById('repSalesTotal').innerText = `${assigned} / ${total} เคส`;
+      const salesCountMap = {};
+      SALES_TEAM.forEach(s => salesCountMap[s.name] = 0);
+      filtered.forEach(l => {
+        if (l.sales && salesCountMap[l.sales] !== undefined) {
+          salesCountMap[l.sales]++;
+        }
+      });
+
+      const salesTbody = document.getElementById('repSalesTableBody');
+      salesTbody.innerHTML = SALES_TEAM.map(s => {
+        const count = salesCountMap[s.name] || 0;
+        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+        return `
+          <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+            <td style="padding: 6px; font-weight: 500; color: #f1f5f9;">${s.name}</td>
+            <td style="padding: 6px; text-align: right; font-weight: 700; color: ${count > 0 ? '#38bdf8' : '#64748b'};">${count} เคส</td>
+            <td style="padding: 6px; text-align: right; color: #94a3b8;">${pct}%</td>
+          </tr>
+        `;
+      }).join('');
+
+      // 2. Truck Breakdown
+      const truckMap = {};
+      filtered.forEach(l => {
+        const t = l.truck || 'หัวลาก';
+        truckMap[t] = (truckMap[t] || 0) + 1;
+      });
+      const truckEntries = Object.entries(truckMap).sort((a, b) => b[1] - a[1]);
+      const truckContainer = document.getElementById('repTruckBreakdown');
+      if (truckEntries.length === 0) {
+        truckContainer.innerHTML = '<span style="color: #64748b;">ไม่มีข้อมูลเคสในช่วงนี้</span>';
+      } else {
+        truckContainer.innerHTML = truckEntries.map(([t, count]) => `
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px; background: rgba(255,255,255,0.02); padding: 4px 8px; border-radius: 4px;">
+            <span style="color: #e2e8f0;">🚚 ${t}</span>
+            <span style="font-weight: 600; color: #38bdf8;">${count} เคส</span>
+          </div>
+        `).join('');
+      }
+
+      // 3. Ad Breakdown
+      const adMap = {};
+      filtered.forEach(l => {
+        if (l.ad && l.ad.trim() !== '') {
+          adMap[l.ad] = (adMap[l.ad] || 0) + 1;
+        }
+      });
+      const adEntries = Object.entries(adMap).sort((a, b) => b[1] - a[1]);
+      const adContainer = document.getElementById('repAdBreakdown');
+      if (adEntries.length === 0) {
+        adContainer.innerHTML = '<span style="color: #64748b;">ยังไม่มีข้อมูลชื่อแอดในช่วงนี้</span>';
+      } else {
+        adContainer.innerHTML = adEntries.slice(0, 5).map(([ad, count]) => `
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.15); padding: 4px 8px; border-radius: 4px;">
+            <span style="color: #38bdf8; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${ad}">📢 ${ad}</span>
+            <span style="font-weight: 600; color: #38bdf8;">${count}</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    function copyDailyReportToLine() {
+      const filtered = getFilteredReportLeads();
+      const total = filtered.length;
+      const assigned = filtered.filter(l => l.sales && l.sales.trim() !== '').length;
+      const pending = total - assigned;
+
+      let periodLabel = 'ประจำวัน';
+      if (currentReportPeriod === 'today') periodLabel = `ประจำวันนี้ (${new Date().toLocaleDateString('th-TH')})`;
+      else if (currentReportPeriod === 'yesterday') periodLabel = 'ประจำเมื่อวาน';
+      else if (currentReportPeriod === '7days') periodLabel = 'รอบ 7 วันล่าสุด';
+      else if (currentReportPeriod === 'month') periodLabel = 'รอบประจำเดือนนี้';
+      else if (currentReportPeriod === 'custom') periodLabel = `ประจำวันที่ ${currentReportCustomDate}`;
+
+      // Sales breakdown text
+      const salesCountMap = {};
+      SALES_TEAM.forEach(s => salesCountMap[s.name] = 0);
+      filtered.forEach(l => {
+        if (l.sales && salesCountMap[l.sales] !== undefined) {
+          salesCountMap[l.sales]++;
+        }
+      });
+      const salesLines = SALES_TEAM
+        .filter(s => salesCountMap[s.name] > 0)
+        .map(s => `  • คุณ${s.name}: ${salesCountMap[s.name]} เคส`)
+        .join('\n') || '  • (ยังไม่มีการจ่ายงาน)';
+
+      // Truck breakdown text
+      const truckMap = {};
+      filtered.forEach(l => {
+        const t = l.truck || 'หัวลาก';
+        truckMap[t] = (truckMap[t] || 0) + 1;
+      });
+      const truckLines = Object.entries(truckMap)
+        .map(([t, c]) => `  • ${t}: ${c} เคส`)
+        .join('\n') || '  • (ไม่มีข้อมูล)';
+
+      // Top Ads text
+      const adMap = {};
+      filtered.forEach(l => {
+        if (l.ad && l.ad.trim() !== '') adMap[l.ad] = (adMap[l.ad] || 0) + 1;
+      });
+      const adLines = Object.entries(adMap).slice(0, 3)
+        .map(([ad, c]) => `  • ${ad}: ${c} เคส`)
+        .join('\n');
+
+      const adSection = adLines ? `\n📢 *แอดที่ทำผลงาน:*\n${adLines}\n` : '';
+
+      const reportText = 
+`📊 *รายงานสรุปการแจกเคสลูกค้า ${periodLabel}*
+━━━━━━━━━━━━━━━━━━
+📞 *ยอดเคสได้เบอร์ทั้งหมด:* ${total} เคส
+✅ จ่ายงานแล้ว: ${assigned} เคส
+⏰ รอเลือกเซลล์: ${pending} เคส
+
+👥 *สรุปการกระจายงานให้เซลล์:*
+${salesLines}
+
+🚚 *ประเภทรถที่ลูกค้าสนใจ:*
+${truckLines}
+${adSection}━━━━━━━━━━━━━━━━━━
+ส่งจากระบบ Pancake Sales CRM 🚀`;
+
+      navigator.clipboard.writeText(reportText).then(() => {
+        Swal.fire({
+          title: 'คัดลอกรีพอร์ตแล้ว! 📋',
+          html: `<div style="text-align: left; background: #0f172a; padding: 12px; border-radius: 8px; font-size: 12px; white-space: pre-wrap; font-family: monospace; color: #38bdf8;">${reportText}</div>`,
+          icon: 'success',
+          confirmButtonText: 'เปิดแอพ LINE เพื่อส่ง',
+          showCancelButton: true,
+          cancelButtonText: 'ปิด'
+        }).then((res) => {
+          if (res.isConfirmed) {
+            window.open('https://line.me/R/', '_blank');
+          }
+        });
+      });
+    }
+
+    function exportReportPeriodCSV() {
+      const filtered = getFilteredReportLeads();
+      if (filtered.length === 0) {
+        Swal.fire('ไม่มีข้อมูล', 'ไม่มีเคสลูกค้าในช่วงเวลาที่เลือก', 'info');
+        return;
+      }
+      let csv = '\uFEFFวันที่รับ,เวลา,ที่มา,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,ชื่อแอด,เซลล์ที่รับ\n';
+      filtered.forEach(l => {
+        csv += `"${l.date}","${l.time}","${l.source}","${l.name}","\t${l.phone}","${l.truck}","${l.ad || ''}","${l.sales}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `pancake_report_${currentReportPeriod}_${new Date().toISOString().slice(0,10)}.csv`;
+      link.click();
+    }
+
 
 
     function copyWebhookUrl() {
