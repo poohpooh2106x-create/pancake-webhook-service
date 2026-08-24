@@ -1930,6 +1930,8 @@
         if (result.isConfirmed) {
           // 1. Instantly register to Blacklist across all formats (phone, cleaned phone, id, composite)
           const updatedBlacklist = addToBlacklist(targetLead);
+          console.log('🗑️ [DeleteLead] Deleting target lead:', targetLead.name, targetLead.phone, targetLead.id);
+          console.log('💾 [Blacklist] Current blacklist entries:', updatedBlacklist);
 
           // 2. Remove from leads array by reference/ID/phone
           leads = leads.filter(l => l !== targetLead && !isLeadBlacklisted(l, updatedBlacklist));
@@ -1941,7 +1943,8 @@
 
           // 4. Sync deletion and complete blacklist to Cloud Server immediately
           try {
-            await fetchWithAuth('/api/webhooks/pancake?action=delete_lead', {
+            console.log('🚀 [DeleteLead] Sending delete request to Cloud Server...');
+            const res = await fetchWithAuth('/api/webhooks/pancake?action=delete_lead', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ 
@@ -1952,7 +1955,13 @@
               }),
               keepalive: true
             });
-          } catch(e) {}
+            if (res && res.ok) {
+              const resJson = await res.json();
+              console.log('✅ [DeleteLead Cloud Success]:', resJson);
+            }
+          } catch(e) {
+            console.error('❌ [DeleteLead Cloud Error]:', e);
+          }
 
           const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
           Toast.fire({ icon: 'success', title: `ลบเคส "${targetLead.name || ''}" เรียบร้อยแล้ว` });
@@ -2639,9 +2648,12 @@ ${adSection}━━━━━━━━━━━━━━━━━━
               } else {
                 // New lead from PanCake or other device
                 if (!isLeadBlacklisted(serverLead, localDeletedIds)) {
+                  console.log('✨ [Polling New Lead Added]:', serverLead.name, serverLead.phone);
                   leads.unshift(serverLead);
                   hasChanges = true;
                   scannedMessageCount++;
+                } else {
+                  console.log('🚫 [Polling Blocked Blacklisted Lead]:', serverLead.name, serverLead.phone);
                 }
               }
             }
