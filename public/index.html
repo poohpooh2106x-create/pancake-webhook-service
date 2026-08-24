@@ -1949,6 +1949,18 @@
           body: JSON.stringify({ leads, truckTypes, channelSources, lead })
         });
       } catch(e) {}
+
+      // Instant direct sync to Google Sheets from browser
+      if (lead && lead.phone) {
+        try {
+          fetch(GOOGLE_SHEETS_SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lead })
+          }).catch(() => {});
+        } catch(e) {}
+      }
     }
 
     function renderMetrics() {
@@ -2733,9 +2745,9 @@ ${adSection}━━━━━━━━━━━━━━━━━━
       const truck = detectTruckType(msg);
       const ad = document.getElementById('simAd') ? document.getElementById('simAd').value.trim() : 'คลิปรีวิวหัวลาก ISUZU 360';
       const { date, time } = getNowThai();
-
-      leads.unshift({ date, time, source, ad, name, phone, truck, sales: '' });
-      saveState();
+      const newLead = { date, time, source, ad, name, phone, truck, sales: '', report: '' };
+      leads.unshift(newLead);
+      saveLeadState(newLead);
       updateAll();
       closeModal('simModal');
 
@@ -2768,8 +2780,9 @@ ${adSection}━━━━━━━━━━━━━━━━━━
       }
       const { date, time } = getNowThai();
 
-      leads.unshift({ date, time, source, ad, name, phone, truck, sales });
-      saveState();
+      const newLead = { date, time, source, ad, name, phone, truck, sales, report: '' };
+      leads.unshift(newLead);
+      saveLeadState(newLead);
       updateAll();
       closeModal('addModal');
 

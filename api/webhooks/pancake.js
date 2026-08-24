@@ -344,21 +344,29 @@ async function syncToGoogleSheets(data) {
     if (Array.isArray(data)) {
       for (const lead of data) {
         if (lead && lead.phone) {
-          fetch(GOOGLE_SHEETS_SCRIPT_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lead }),
-            redirect: 'follow'
-          }).catch(() => {});
+          try {
+            await fetch(GOOGLE_SHEETS_SCRIPT_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ lead }),
+              redirect: 'follow'
+            });
+          } catch(err) {
+            console.warn('Sync lead to sheet error:', err.message);
+          }
         }
       }
     } else if (data.phone) {
-      fetch(GOOGLE_SHEETS_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lead: data }),
-        redirect: 'follow'
-      }).catch(() => {});
+      try {
+        await fetch(GOOGLE_SHEETS_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lead: data }),
+          redirect: 'follow'
+        });
+      } catch(err) {
+        console.warn('Sync lead to sheet error:', err.message);
+      }
     }
   } catch (e) {
     console.warn('Google Sheets sync error:', e.message);
