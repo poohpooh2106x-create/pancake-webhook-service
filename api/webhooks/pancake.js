@@ -58,120 +58,11 @@ let memoryLeads = [
     truck: "คอก",
     sales: "เกด",
     report: ""
-  },
-  {
-    id: "aa72c07e-17a8-421a-8e76-178ee1615f38",
-    date: "22/08/2026",
-    time: "11:49:27",
-    source: "FB เคพีศรีราชา",
-    name: "ประกายฟ้า สานนอก",
-    phone: "0997316431",
-    truck: "หัวลาก",
-    sales: "ท็อป",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "8f19e779-220f-4bfe-b872-c5503c8a4b3b",
-    date: "22/08/2026",
-    time: "11:49:15",
-    source: "FB เคพีศรีราชา",
-    name: "ชีวิตคือ การเดินทาง",
-    phone: "0988918611",
-    truck: "หัวลาก",
-    sales: "เกด",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "fdf3b193-d090-40c4-9827-9c5ad9e5c01e",
-    date: "22/08/2026",
-    time: "11:44:19",
-    source: "FB เคพีศรีราชา",
-    name: "Supattana Wongkom",
-    phone: "0961917277",
-    truck: "เครน",
-    sales: "เกด",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_sawai_1",
-    date: "22/08/2026",
-    time: "16:02:48",
-    source: "FB เคพีศรีราชา",
-    name: "Sawai Sinoun",
-    phone: "0817251742",
-    truck: "หัวลาก",
-    sales: "วุธ",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "920b0522-936d-4506-b293-81e43c858f74",
-    date: "22/08/2026",
-    time: "16:21:18",
-    source: "FB เคพีศรีราชา",
-    name: "นาย อำนวยชัย",
-    phone: "0865401249",
-    truck: "หัวลาก",
-    sales: "",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "28b09f25-1f33-473d-b5e3-ad645aea1e2f",
-    date: "22/08/2026",
-    time: "16:21:40",
-    source: "FB เคพีศรีราชา",
-    name: "ณัฐพงษ์ บุญวงศ์",
-    phone: "0897402202",
-    truck: "หัวลาก",
-    sales: "",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_prakaifah_2",
-    date: "22/08/2026",
-    time: "11:48:25",
-    source: "FB เคพีศรีราชา",
-    name: "ประกายฟ้า สานนอก",
-    phone: "0997316432",
-    truck: "หัวลาก",
-    sales: "",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_sathaporn_1",
-    date: "22/08/2026",
-    time: "11:20:10",
-    source: "FB เคพีศรีราชา",
-    name: "Sathaporn Piyaboonpanya",
-    phone: "0840957477",
-    truck: "หัวลาก",
-    sales: "",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_chili_1",
-    date: "22/08/2026",
-    time: "11:15:30",
-    source: "FB เคพีศรีราชา",
-    name: "chili(เมร์)",
-    phone: "0930189287",
-    truck: "หัวลาก",
-    sales: "",
-    ad: "",
-    report: ""
   }
 ];
 let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'เครน'];
 let webhookLogs = [];
 const dedupeCache = new Map();
-
 
 const DEDUPE_TTL_MS = 60 * 1000; // 1 minute dedupe for exact duplicate spam
 
@@ -212,6 +103,28 @@ function cleanThaiPhoneNumber(rawPhone) {
     }
   }
 
+  return null;
+}
+
+/**
+ * Universal Recursive Deep Scan Helper for Thai Phone Numbers in any JSON structure
+ */
+function deepFindThaiPhone(obj, depth = 0) {
+  if (!obj || depth > 6) return null;
+  if (typeof obj === 'string') {
+    const cleaned = cleanThaiPhoneNumber(obj);
+    if (cleaned) return cleaned;
+  } else if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const found = deepFindThaiPhone(item, depth + 1);
+      if (found) return found;
+    }
+  } else if (typeof obj === 'object' && obj !== null) {
+    for (const val of Object.values(obj)) {
+      const found = deepFindThaiPhone(val, depth + 1);
+      if (found) return found;
+    }
+  }
   return null;
 }
 
@@ -258,19 +171,23 @@ function getThaiDateTime() {
 }
 
 function isDuplicateSpam(id, phone) {
-  const key = `${id || 'noid'}:${phone}`;
+  if (!phone) return false;
   const now = Date.now();
   for (const [k, timestamp] of dedupeCache.entries()) {
     if (now - timestamp > DEDUPE_TTL_MS) {
       dedupeCache.delete(k);
     }
   }
-  return dedupeCache.has(key);
+  const key = `${id || 'noid'}:${phone}`;
+  return dedupeCache.has(key) || dedupeCache.has(`phone:${phone}`);
 }
 
 function recordLeadDedupe(id, phone) {
+  if (!phone) return;
   const key = `${id || 'noid'}:${phone}`;
-  dedupeCache.set(key, Date.now());
+  const now = Date.now();
+  dedupeCache.set(key, now);
+  dedupeCache.set(`phone:${phone}`, now);
 }
 
 
@@ -415,8 +332,6 @@ async function syncToGoogleSheets(data) {
   }
 }
 
-const syncLeadToGoogleSheets = syncToGoogleSheets;
-
 function saveCloudData(leadsList, truckTypesList, logsList) {
   return new Promise((resolve) => {
     if (Array.isArray(leadsList)) memoryLeads = leadsList;
@@ -507,9 +422,22 @@ const ALLOWED_ORIGINS = [
   'http://localhost:5000'
 ];
 
-// 1. Strong Random Default Tokens (64-character high-entropy cryptographic strings)
-const ADMIN_SECRET_TOKEN = process.env.PANCAKE_ADMIN_TOKEN || process.env.PANCAKE_SECRET_TOKEN || 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
-const SALES_SECRET_TOKEN = process.env.PANCAKE_SALES_TOKEN || 'kp_sales_4a8b1c9d2e7f3056e8b1c4a9d2e7f30572bca39104ef92817d6a5c3b1e2f4a08';
+// 1. Strong Random Default Tokens & Multi-Token Set Support
+const VALID_ADMIN_TOKENS = new Set([
+  process.env.PANCAKE_ADMIN_TOKEN,
+  process.env.PANCAKE_SECRET_TOKEN,
+  'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e',
+  'kp_crm_sec_2026'
+].filter(Boolean));
+
+const VALID_SALES_TOKENS = new Set([
+  process.env.PANCAKE_SALES_TOKEN,
+  'kp_sales_4a7c8e2b9d1f3068e5b7a2c4d9f103b872e4a9c1d5f8b0e3a6c2d4f8b9e1a3c5',
+  'kp_sales_4a8b1c9d2e7f3056e8b1c4a9d2e7f30572bca39104ef92817d6a5c3b1e2f4a08'
+].filter(Boolean));
+
+const ADMIN_SECRET_TOKEN = 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
+const SALES_SECRET_TOKEN = 'kp_sales_4a7c8e2b9d1f3068e5b7a2c4d9f103b872e4a9c1d5f8b0e3a6c2d4f8b9e1a3c5';
 
 // 2. Rate Limiting State (Max 100 requests/minute per IP/Token)
 const rateLimitMap = new Map();
@@ -601,8 +529,8 @@ function getProvidedToken(req) {
 function authenticateUser(req) {
   const token = getProvidedToken(req);
   if (!token) return { authenticated: false, role: null };
-  if (token === ADMIN_SECRET_TOKEN || token === 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e' || token === 'kp_crm_sec_2026') return { authenticated: true, role: 'admin' };
-  if (token === SALES_SECRET_TOKEN || token === 'kp_sales_4a8b1c9d2e7f3056e8b1c4a9d2e7f30572bca39104ef92817d6a5c3b1e2f4a08') return { authenticated: true, role: 'sales' };
+  if (VALID_ADMIN_TOKENS.has(token)) return { authenticated: true, role: 'admin' };
+  if (VALID_SALES_TOKENS.has(token)) return { authenticated: true, role: 'sales' };
   return { authenticated: false, role: null };
 }
 
@@ -673,7 +601,7 @@ module.exports = async (req, res) => {
   // ACTION: LOGIN (Set httpOnly Cookie)
   if (action === 'login' && req.method === 'POST') {
     const inputToken = (payload?.token || req.query?.secret || req.query?.token || req.headers['x-pancake-secret'] || '').trim();
-    if (inputToken === ADMIN_SECRET_TOKEN || inputToken === 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e' || inputToken === 'kp_crm_sec_2026') {
+    if (VALID_ADMIN_TOKENS.has(inputToken)) {
       res.setHeader('Set-Cookie', `crm_session=${encodeURIComponent(ADMIN_SECRET_TOKEN)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`);
       recordAuditLog(req, clientIp, 'admin', 200, 'login_success');
       return res.status(200).json({
@@ -682,7 +610,7 @@ module.exports = async (req, res) => {
         token: ADMIN_SECRET_TOKEN,
         message: 'Admin authentication successful (httpOnly session cookie established)'
       });
-    } else if (inputToken === SALES_SECRET_TOKEN || inputToken === 'kp_sales_4a8b1c9d2e7f3056e8b1c4a9d2e7f30572bca39104ef92817d6a5c3b1e2f4a08') {
+    } else if (VALID_SALES_TOKENS.has(inputToken)) {
       res.setHeader('Set-Cookie', `crm_session=${encodeURIComponent(SALES_SECRET_TOKEN)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`);
       recordAuditLog(req, clientIp, 'sales', 200, 'login_success');
       return res.status(200).json({
@@ -699,8 +627,6 @@ module.exports = async (req, res) => {
       });
     }
   }
-
-
 
   // ACTION: LOGOUT (Clear httpOnly Cookie)
   if (action === 'logout') {
@@ -778,19 +704,24 @@ module.exports = async (req, res) => {
     }
   }
 
-
   if (action === 'sync_state') {
     // RBAC: Role-Based Access Control
     if (authUser.role === 'sales') {
       // Sales can only update the 'report' note for leads; they cannot delete leads or change truck list
       if (Array.isArray(payload?.leads)) {
-        // Merge only report field
         for (const updatedLead of payload.leads) {
           const target = memoryLeads.find(l => (updatedLead.id && l.id === updatedLead.id) || l.phone === updatedLead.phone);
           if (target && updatedLead.report !== undefined) {
             target.report = updatedLead.report;
           }
         }
+      }
+      if (payload?.lead) {
+        const target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
+        if (target && payload.lead.report !== undefined) {
+          target.report = payload.lead.report;
+        }
+        await syncToGoogleSheets(payload.lead);
       }
       await saveCloudData(memoryLeads, memoryTruckTypes);
       recordAuditLog(req, clientIp, authUser.role, 200, 'sync_sales_report');
@@ -801,7 +732,12 @@ module.exports = async (req, res) => {
     if (Array.isArray(payload?.leads)) memoryLeads = payload.leads;
     if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) memoryTruckTypes = payload.truckTypes;
     await saveCloudData(memoryLeads, memoryTruckTypes);
-    await syncToGoogleSheets(memoryLeads);
+    
+    // If a specific lead was updated, sync that lead to Google Sheets
+    if (payload?.lead) {
+      await syncToGoogleSheets(payload.lead);
+    }
+
     recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_admin_state');
     return res.status(200).json({ 
       success: true, 
@@ -810,7 +746,6 @@ module.exports = async (req, res) => {
       role: authUser.role || 'admin'
     });
   }
-
 
   // DELETE: Clear server logs (Admin Only)
   if (req.method === 'DELETE') {
@@ -824,13 +759,6 @@ module.exports = async (req, res) => {
   }
 
   // Handle Incoming PanCake Webhook (POST without internal admin actions)
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
-
-
-
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -1049,8 +977,12 @@ module.exports = async (req, res) => {
     // Save updated leads and persistent logs to Cloud Database immediately!
     await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs);
 
+    // Sync new leads to Google Sheets via Apps Script Webhook
+    if (newLeads.length > 0) {
+      await syncToGoogleSheets(newLeads);
+    }
 
-    // If Google Sheets is configured, also append to Sheets
+    // If Google Sheets Service Account is configured, also append to Sheets
     if (rowsToAppend.length > 0) {
       await appendToSheet(rowsToAppend);
     }

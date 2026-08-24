@@ -1,85 +1,202 @@
 /**
- * Unit test for Standalone Netlify Function Handler
+ * Comprehensive Automated Tests for PanCake Webhook Handler
+ * Endpoint handler: api/webhooks/pancake.js
  */
 const assert = require('assert');
-const { handler } = require('../netlify/functions/pancake.js');
+const pancakeHandler = require('../api/webhooks/pancake.js');
 
-async function runTests() {
-  console.log('🧪 Testing Standalone Netlify Function Handler...\n');
-
-  // Test 1: GET request (Health check)
-  const getEvent = { httpMethod: 'GET' };
-  const getRes = await handler(getEvent, {});
-  assert.strictEqual(getRes.statusCode, 200);
-  const getBody = JSON.parse(getRes.body);
-  assert.strictEqual(getBody.status, 'online');
-  console.log('✅ Test 1 Passed: GET Health check');
-
-  // Test 2: POST with Invalid JSON
-  const invalidJsonEvent = { httpMethod: 'POST', body: 'invalid json' };
-  const invalidRes = await handler(invalidJsonEvent, {});
-  assert.strictEqual(invalidRes.statusCode, 400);
-  console.log('✅ Test 2 Passed: Invalid JSON handling');
-
-  // Test 3: POST with Invalid Phone
-  const invalidPhoneEvent = {
-    httpMethod: 'POST',
-    body: JSON.stringify({
-      fields: [
-        {
-          id: 'test_inv',
-          NAME: 'ทดสอบ เบอร์ผิด',
-          PHONE: [{ VALUE: '12345', VALUE_TYPE: 'WORK' }]
-        }
-      ]
-    })
-  };
-  const invPhoneRes = await handler(invalidPhoneEvent, {});
-  assert.strictEqual(invPhoneRes.statusCode, 200);
-  const invPhoneBody = JSON.parse(invPhoneRes.body);
-  assert.strictEqual(invPhoneBody.savedCount, 0);
-  console.log('✅ Test 3 Passed: Invalid phone skipped');
-
-  // Test 4: POST with exact user payload
-  const validEvent = {
-    httpMethod: 'POST',
-    body: JSON.stringify({
-      fields: [
-        {
-          id: 'rec_standalone_01',
-          NAME: 'ประกายฟ้า สานนอก',
-          PHONE: [
-            {
-              VALUE: '099-731-6431',
-              VALUE_TYPE: 'WORK'
-            }
-          ]
-        }
-      ]
-    })
+function createMockReqRes({ method = 'GET', url = '/api/webhooks/pancake', headers = {}, query = {}, body = {} } = {}) {
+  const req = {
+    method,
+    url,
+    headers: { 'user-agent': 'TestRunner/1.0', ...headers },
+    query,
+    body,
+    socket: { remoteAddress: '127.0.0.1' }
   };
 
-  const validRes = await handler(validEvent, {});
-  assert.strictEqual(validRes.statusCode, 200);
-  const validBody = JSON.parse(validRes.body);
-  assert.strictEqual(validBody.success, true);
-  assert.strictEqual(validBody.savedCount, 1);
-  assert.strictEqual(validBody.leads[0].phone, '0997316431');
-  assert.strictEqual(validBody.leads[0].source, 'Facebook');
-  console.log('✅ Test 4 Passed: Exact PanCake JSON payload parsed successfully');
+  const resData = {
+    statusCode: 200,
+    headers: {},
+    body: null
+  };
 
-  // Test 5: Deduplication check
-  const dupRes = await handler(validEvent, {});
-  assert.strictEqual(dupRes.statusCode, 200);
-  const dupBody = JSON.parse(dupRes.body);
-  assert.strictEqual(dupBody.savedCount, 0, 'Duplicate should have savedCount = 0');
-  console.log('✅ Test 5 Passed: Deduplication successfully prevented recording duplicate');
+  const res = {
+    status(code) {
+      resData.statusCode = code;
+      return res;
+    },
+    setHeader(name, val) {
+      resData.headers[name.toLowerCase()] = val;
+      return res;
+    },
+    json(data) {
+      resData.body = data;
+      return res;
+    },
+    send(data) {
+      resData.body = data;
+      return res;
+    }
+  };
 
-  console.log('\n🎉 All Standalone Netlify Function Handler tests passed successfully!\n');
-  process.exit(0);
+  return { req, res, resData };
 }
 
-runTests().catch((err) => {
-  console.error('❌ Test failed:', err);
+async function runAllTests() {
+  console.log('🧪 Starting PanCake Webhook Handler Test Suite...\n');
+
+  // Test 1: GET Request (System Health Check & Cloud Data)
+  {
+    const { req, res, resData } = createMockReqRes({ method: 'GET' });
+    await pancakeHandler(req, res);
+    assert.strictEqual(resData.statusCode, 200, 'GET should return 200');
+    assert.strictEqual(resData.body.status, 'online', 'Status should be online');
+    assert.ok(Array.isArray(resData.body.leads), 'Leads should be an array');
+    assert.ok(Array.isArray(resData.body.truckTypes), 'Truck types should be an array');
+    console.log('✅ Test 1 Passed: GET Health check & initial cloud state');
+  }
+
+  // Test 2: Admin Authentication Login
+  {
+    const adminToken = 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
+    const { req, res, resData } = createMockReqRes({
+      method: 'POST',
+      query: { action: 'login' },
+      body: { token: adminToken }
+    });
+    await pancakeHandler(req, res);
+    assert.strictEqual(resData.statusCode, 200, 'Admin login should return 200');
+    assert.strictEqual(resData.body.success, true);
+    assert.strictEqual(resData.body.role, 'admin');
+    assert.ok(resData.headers['set-cookie']?.includes('crm_session='), 'Should set httpOnly cookie');
+    console.log('✅ Test 2 Passed: Admin Token login & session cookie');
+  }
+
+  // Test 3: Sales Authentication Login (Official Token)
+  {
+    const salesToken = 'kp_sales_4a7c8e2b9d1f3068e5b7a2c4d9f103b872e4a9c1d5f8b0e3a6c2d4f8b9e1a3c5';
+    const { req, res, resData } = createMockReqRes({
+      method: 'POST',
+      query: { action: 'login' },
+      body: { token: salesToken }
+    });
+    await pancakeHandler(req, res);
+    assert.strictEqual(resData.statusCode, 200, 'Sales login should return 200');
+    assert.strictEqual(resData.body.success, true);
+    assert.strictEqual(resData.body.role, 'sales');
+    console.log('✅ Test 3 Passed: Sales Token login & RBAC role assignment');
+  }
+
+  // Test 4: Invalid Authentication Token
+  {
+    const { req, res, resData } = createMockReqRes({
+      method: 'POST',
+      query: { action: 'login' },
+      body: { token: 'invalid_token_12345' }
+    });
+    await pancakeHandler(req, res);
+    assert.strictEqual(resData.statusCode, 401, 'Invalid token should return 401');
+    assert.strictEqual(resData.body.error, 'Unauthorized');
+    console.log('✅ Test 4 Passed: Invalid Token rejected with 401');
+  }
+
+  // Test 5: Standard PanCake Webhook Payload
+  {
+    const testPhone = '0812345678';
+    const { req, res, resData } = createMockReqRes({
+      method: 'POST',
+      body: {
+        fields: [
+          {
+            id: 'test_lead_std_01',
+            NAME: 'ทดสอบ ลูกค้าใหม่',
+            PHONE: [{ VALUE: testPhone }]
+          }
+        ]
+      }
+    });
+    await pancakeHandler(req, res);
+    assert.strictEqual(resData.statusCode, 200);
+    assert.strictEqual(resData.body.success, true);
+    const created = resData.body.recentLeads?.find(l => l.phone === testPhone);
+    assert.ok(created, 'Lead with valid phone should be processed');
+    assert.strictEqual(created.phone, testPhone);
+    console.log('✅ Test 5 Passed: Standard PanCake fields payload processed');
+  }
+
+  // Test 6: Deep Universal Fallback Scan for Thai Phone Number (deepFindThaiPhone)
+  {
+    const nestedPhone = '0987654321';
+    const { req, res, resData } = createMockReqRes({
+      method: 'POST',
+      body: {
+        event: 'custom_message',
+        meta: {
+          deep_nested: {
+            conversation: {
+              raw_text: `สนใจรถสิบล้อ ติดต่อได้ที่เบอร์ ${nestedPhone} นะครับ`
+            }
+          }
+        }
+      }
+    });
+    await pancakeHandler(req, res);
+    assert.strictEqual(resData.statusCode, 200);
+    assert.strictEqual(resData.body.success, true);
+    const created = resData.body.recentLeads?.find(l => l.phone === nestedPhone);
+    assert.ok(created, 'Deep nested Thai phone should be successfully extracted by deepFindThaiPhone');
+    assert.strictEqual(created.phone, nestedPhone);
+    console.log('✅ Test 6 Passed: Universal deep Thai phone scanner (deepFindThaiPhone)');
+  }
+
+  // Test 7: Deduplication Prevention
+  {
+    const dupPhone = '0987654321';
+    const { req, res, resData } = createMockReqRes({
+      method: 'POST',
+      body: {
+        fields: [
+          {
+            id: 'dup_test_id',
+            NAME: 'ลูกค้ายิงซ้ำ',
+            PHONE: [{ VALUE: dupPhone }]
+          }
+        ]
+      }
+    });
+    await pancakeHandler(req, res);
+    assert.strictEqual(resData.statusCode, 200);
+    const newCount = resData.body.recentLeads?.length || 0;
+    assert.strictEqual(newCount, 0, 'Duplicate lead within TTL should be skipped');
+    console.log('✅ Test 7 Passed: Rapid duplicate spam prevention');
+  }
+
+  // Test 8: Sync State with Single Lead Update
+  {
+    const updateLead = {
+      id: '570f8dab-320b-4488-8fa0-1bdd5bfcf473',
+      phone: '0963577542',
+      report: 'โทรติดต่อแล้ว ลูกค้าสนใจเข้ามาดูรถวันเสาร์'
+    };
+    const { req, res, resData } = createMockReqRes({
+      method: 'POST',
+      query: { action: 'sync_state' },
+      headers: { 'x-pancake-secret': 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e' },
+      body: {
+        lead: updateLead
+      }
+    });
+    await pancakeHandler(req, res);
+    assert.strictEqual(resData.statusCode, 200);
+    assert.strictEqual(resData.body.success, true);
+    console.log('✅ Test 8 Passed: State and single lead update sync');
+  }
+
+  console.log('\n🎉 ALL TESTS PASSED SUCCESSFULLY! The codebase is robust, clean, and ready.\n');
+}
+
+runAllTests().catch((err) => {
+  console.error('\n❌ Test suite failed with error:', err);
   process.exit(1);
 });

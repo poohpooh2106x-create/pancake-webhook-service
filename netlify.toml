@@ -1,9 +1,0 @@
-[build]
-  publish = "public"
-  functions = "netlify/functions"
-
-[[redirects]]
-  from = "/api/webhooks/pancake"
-  to = "/.netlify/functions/pancake"
-  status = 200
-  force = true

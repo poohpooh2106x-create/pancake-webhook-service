@@ -1010,6 +1010,13 @@
       { name: 'เฟิร์น', badgeClass: 'badge-fern' }
     ];
 
+    function sanitizeSalesName(name) {
+      if (!name) return '';
+      const s = String(name).trim();
+      if (s === 'ลิ้น') return 'อั๋น';
+      return s;
+    }
+
     // TRUCK TYPES (Customizable & Bulletproof Persistence)
     const DEFAULT_TRUCKS = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
     const TRUCKS_STORAGE_KEY = 'pancake_truck_types_v5';
@@ -1380,12 +1387,11 @@
               arr.forEach(l => {
                 const key = l.phone || l.id;
                 if (key && !masterMap.has(key)) {
-                  const salesName = l.sales === 'ลิ้น' ? 'อั๋น' : (l.sales || '');
                   masterMap.set(key, {
                     ...l,
                     source: sanitizeChannelName(l.source),
                     truck: l.truck || '',
-                    sales: salesName,
+                    sales: sanitizeSalesName(l.sales),
                     ad: l.ad || '',
                     report: l.report || ''
                   });
@@ -1408,12 +1414,11 @@
                 req.result.data.forEach(l => {
                   const key = l.phone || l.id;
                   if (key && !masterMap.has(key)) {
-                    const salesName = l.sales === 'ลิ้น' ? 'อั๋น' : (l.sales || '');
                     masterMap.set(key, {
                       ...l,
                       source: sanitizeChannelName(l.source),
                       truck: l.truck || '',
-                      sales: salesName,
+                      sales: sanitizeSalesName(l.sales),
                       ad: l.ad || '',
                       report: l.report || ''
                     });
@@ -1436,7 +1441,7 @@
             data.leads.forEach(serverLead => {
               const key = serverLead.phone || serverLead.id;
               if (key) {
-                const serverSales = serverLead.sales === 'ลิ้น' ? 'อั๋น' : (serverLead.sales || '');
+                const serverSales = sanitizeSalesName(serverLead.sales);
                 if (masterMap.has(key)) {
                   // Merge fields intelligently: keep local sales if server is empty
                   const existing = masterMap.get(key);
@@ -1590,15 +1595,14 @@
 
     const GOOGLE_SHEETS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzUdIU62Fx5-OS9Ldjx54O_HU5NJtt-C5RoFrF0k1OECVeTnFlyirdEheX6b88e8rBXmw/exec';
 
-    function syncLeadToGoogleSheets(lead) {
-      if (!GOOGLE_SHEETS_SCRIPT_URL || !lead || !lead.phone) return;
+    function saveLeadState(lead) {
+      saveState(false);
       try {
-        fetch(GOOGLE_SHEETS_SCRIPT_URL, {
+        fetchWithAuth('/api/webhooks/pancake?action=sync_state', {
           method: 'POST',
-          mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lead })
-        }).catch(() => {});
+          body: JSON.stringify({ leads, truckTypes, lead })
+        });
       } catch(e) {}
     }
 
@@ -1733,8 +1737,7 @@
     function updateLeadTruck(idx, val) {
       if (leads[idx]) {
         leads[idx].truck = val;
-        saveState();
-        syncLeadToGoogleSheets(leads[idx]);
+        saveLeadState(leads[idx]);
         try { updateCharts(); } catch(e) {}
         renderTable();
       }
@@ -1743,8 +1746,7 @@
     function updateLeadReport(idx, val) {
       if (leads[idx]) {
         leads[idx].report = val;
-        saveState(true);
-        syncLeadToGoogleSheets(leads[idx]);
+        saveLeadState(leads[idx]);
         showSaveIndicator('บันทึกรีพอร์ตเซลล์แล้ว 💾');
       }
     }
@@ -1763,8 +1765,7 @@
     function updateLeadSource(idx, val) {
       if (leads[idx]) {
         leads[idx].source = val;
-        saveState();
-        syncLeadToGoogleSheets(leads[idx]);
+        saveLeadState(leads[idx]);
         renderTable();
       }
     }
@@ -1772,8 +1773,7 @@
     function updateLeadSales(idx, val) {
       if (leads[idx]) {
         leads[idx].sales = val;
-        saveState();
-        syncLeadToGoogleSheets(leads[idx]);
+        saveLeadState(leads[idx]);
         renderMetrics();
         renderSalesList();
         try { updateCharts(); } catch(e) {}
@@ -1942,10 +1942,15 @@
 
     function setReportPeriod(period, btnElement) {
       currentReportPeriod = period;
-      if (btn) {
-        btn.style.background = '#2563eb';
-        btn.style.color = 'white';
-        btn.style.borderColor = '#3b82f6';
+      document.querySelectorAll('.rep-filter-btn').forEach(b => {
+        b.style.background = '#090e17';
+        b.style.color = 'var(--text-muted)';
+        b.style.borderColor = 'var(--border)';
+      });
+      if (btnElement) {
+        btnElement.style.background = '#2563eb';
+        btnElement.style.color = 'white';
+        btnElement.style.borderColor = '#3b82f6';
       }
 
       renderReportData();
@@ -2283,10 +2288,6 @@ ${adSection}━━━━━━━━━━━━━━━━━━
     // Modals
     function openSimulatorModal() { document.getElementById('simModal').style.display = 'flex'; }
     function openAddLeadModal() { document.getElementById('addModal').style.display = 'flex'; }
-    function openLogsModal() {
-      document.getElementById('logsModal').style.display = 'flex';
-      fetchLiveLogs();
-    }
     function closeModal(id) { document.getElementById(id).style.display = 'none'; }
     function setSimMsg(msg) { document.getElementById('simMessage').value = msg; }
 
@@ -2363,7 +2364,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
     }
 
 
-    // REAL-TIME AUTO SYNC FROM CLOUD DATABASE (POLLING EVERY 3 SECONDS)
+    // REAL-TIME AUTO SYNC FROM CLOUD DATABASE (POLLING EVERY 4 SECONDS)
     async function refreshLeads() {
       try {
         const res = await fetchWithAuth('/api/webhooks/pancake');
@@ -2409,15 +2410,15 @@ ${adSection}━━━━━━━━━━━━━━━━━━
 
           // If local leads is empty (new device / fresh browser), populate all from cloud!
           if (leads.length === 0) {
-            leads = validServerLeads.map(l => ({ ...l, sales: l.sales === 'ลิ้น' ? 'อั๋น' : (l.sales || '') }));
+            leads = validServerLeads.map(l => ({ ...l, sales: sanitizeSalesName(l.sales) }));
             hasChanges = true;
           } else {
             for (const serverLead of validServerLeads) {
-              const serverSales = serverLead.sales === 'ลิ้น' ? 'อั๋น' : (serverLead.sales || '');
+              const serverSales = sanitizeSalesName(serverLead.sales);
               const existingIdx = leads.findIndex(l => (serverLead.id && l.id === serverLead.id) || l.phone === serverLead.phone);
               if (existingIdx !== -1) {
                 const local = leads[existingIdx];
-                if (local.sales === 'ลิ้น') { local.sales = 'อั๋น'; hasChanges = true; }
+                local.sales = sanitizeSalesName(local.sales);
 
                 // 1. Sales Assignment (NEVER overwrite a filled local sales rep with an empty server sales)
                 if (local.sales && !serverSales) {
@@ -2476,8 +2477,12 @@ ${adSection}━━━━━━━━━━━━━━━━━━
               }
             }
 
-            if (leads.length > validServerLeads.length) {
-              needsPushToCloud = true;
+            // Check if local has unique new leads not yet present on server
+            for (const localLead of leads) {
+              if (!validServerLeads.some(sl => (localLead.id && sl.id === localLead.id) || sl.phone === localLead.phone)) {
+                needsPushToCloud = true;
+                break;
+              }
             }
           }
 
@@ -2495,7 +2500,6 @@ ${adSection}━━━━━━━━━━━━━━━━━━
         console.warn('Sync error:', e.message);
       }
     }
-
 
     function openLogsModal() {
       document.getElementById('logsModal').style.display = 'flex';
