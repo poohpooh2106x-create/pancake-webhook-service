@@ -272,23 +272,114 @@ const ALLOWED_ORIGINS = [
   'http://localhost:5000'
 ];
 
+// 1. Strong Random Default Tokens (64-character high-entropy cryptographic strings)
+const ADMIN_SECRET_TOKEN = process.env.PANCAKE_ADMIN_TOKEN || process.env.PANCAKE_SECRET_TOKEN || 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
+const SALES_SECRET_TOKEN = process.env.PANCAKE_SALES_TOKEN || 'kp_sales_4a8b1c9d2e7f3056e8b1c4a9d2e7f30572bca39104ef92817d6a5c3b1e2f4a08';
+
+// 2. Rate Limiting State (Max 100 requests/minute per IP/Token)
+const rateLimitMap = new Map();
+const RATE_LIMIT_MAX = 100;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
+function checkRateLimit(clientKey) {
+  const now = Date.now();
+  let entry = rateLimitMap.get(clientKey);
+  if (!entry || now - entry.startTime > RATE_LIMIT_WINDOW_MS) {
+    entry = { count: 1, startTime: now };
+    rateLimitMap.set(clientKey, entry);
+    return { allowed: true, remaining: RATE_LIMIT_MAX - 1, resetSeconds: 60 };
+  }
+  entry.count++;
+  if (entry.count > RATE_LIMIT_MAX) {
+    const resetSeconds = Math.ceil((entry.startTime + RATE_LIMIT_WINDOW_MS - now) / 1000);
+    return { allowed: false, remaining: 0, resetSeconds };
+  }
+  return { 
+    allowed: true, 
+    remaining: RATE_LIMIT_MAX - entry.count, 
+    resetSeconds: Math.ceil((entry.startTime + RATE_LIMIT_WINDOW_MS - now) / 1000) 
+  };
+}
+
+// 3. Security Audit Logging (Timestamp, IP, Method, Path, Masked Token, Status Code, Role)
+let securityAuditLogs = [];
+const MAX_AUDIT_LOGS = 100;
+
+function recordAuditLog(req, ip, role, statusCode, action) {
+  const { date, time } = getThaiDateTime();
+  const rawToken = getProvidedToken(req) || '';
+  const maskedToken = rawToken.length > 10 ? `${rawToken.slice(0, 6)}...${rawToken.slice(-4)}` : (rawToken ? '****' : 'none');
+  
+  const logEntry = {
+    id: 'sec_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+    timestamp: `${date} ${time}`,
+    ip,
+    method: req.method,
+    path: req.url || '/api/webhooks/pancake',
+    action: action || req.query?.action || 'request',
+    role: role || 'unauthenticated',
+    token: maskedToken,
+    statusCode,
+    userAgent: (req.headers['user-agent'] || 'unknown').slice(0, 100)
+  };
+
+  securityAuditLogs.unshift(logEntry);
+  if (securityAuditLogs.length > MAX_AUDIT_LOGS) {
+    securityAuditLogs.pop();
+  }
+}
+
+// 4. Cookie Parser Helper
+function parseCookies(req) {
+  const list = {};
+  const rc = req.headers.cookie;
+  if (!rc) return list;
+  rc.split(';').forEach(cookie => {
+    const parts = cookie.split('=');
+    const key = parts.shift()?.trim();
+    if (key) list[key] = decodeURIComponent(parts.join('=').trim());
+  });
+  return list;
+}
+
+// 5. Token & Auth Verification Helper
 function getProvidedToken(req) {
+  // A. httpOnly Cookie (Browser Session)
+  const cookies = parseCookies(req);
+  if (cookies.crm_session) return cookies.crm_session.trim();
+  if (cookies.crm_auth_token) return cookies.crm_auth_token.trim();
+
+  // B. Authorization Header
   const auth = req.headers['authorization'] || '';
   if (auth.startsWith('Bearer ')) return auth.slice(7).trim();
+
+  // C. Custom Header
   if (req.headers['x-pancake-secret']) return String(req.headers['x-pancake-secret']).trim();
+
+  // D. Query Parameter (for PanCake Webhook configuration)
   if (req.query?.secret) return String(req.query.secret).trim();
   if (req.query?.token) return String(req.query.token).trim();
+
   return null;
 }
 
+function authenticateUser(req) {
+  const token = getProvidedToken(req);
+  if (!token) return { authenticated: false, role: null };
+  if (token === ADMIN_SECRET_TOKEN) return { authenticated: true, role: 'admin' };
+  if (token === SALES_SECRET_TOKEN) return { authenticated: true, role: 'sales' };
+  return { authenticated: false, role: null };
+}
+
 module.exports = async (req, res) => {
-  // 1. Strict CORS Origin Restriction (ป้องกันไม่ให้เว็บอื่นยิงข้ามโดเมน)
+  // CORS with credentials support (httpOnly Cookie)
   const reqOrigin = req.headers.origin;
   if (reqOrigin && ALLOWED_ORIGINS.includes(reqOrigin)) {
     res.setHeader('Access-Control-Allow-Origin', reqOrigin);
   } else {
     res.setHeader('Access-Control-Allow-Origin', 'https://pancake-webhook-service.vercel.app');
   }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Pancake-Secret, Authorization');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
 
@@ -296,18 +387,26 @@ module.exports = async (req, res) => {
     return res.status(200).json({ message: 'OK' });
   }
 
-  // 2. Strict Authentication Check (401 Unauthorized if invalid/missing Secret Token)
-  const SECRET_TOKEN = process.env.PANCAKE_SECRET_TOKEN || 'kp_crm_sec_2026';
-  const clientToken = getProvidedToken(req);
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '127.0.0.1';
 
-  if (SECRET_TOKEN && clientToken !== SECRET_TOKEN) {
-    return res.status(401).json({
-      error: 'Unauthorized',
-      message: 'Access Denied: Invalid or missing API Key / Secret Token (X-Pancake-Secret header or ?secret= required)'
+  // Rate Limiting Check (Max 100 req/min)
+  const rateLimitKey = `${clientIp}_${getProvidedToken(req) || 'anon'}`;
+  const rateCheck = checkRateLimit(rateLimitKey);
+  res.setHeader('X-RateLimit-Limit', RATE_LIMIT_MAX);
+  res.setHeader('X-RateLimit-Remaining', rateCheck.remaining);
+  res.setHeader('X-RateLimit-Reset', rateCheck.resetSeconds);
+
+  if (!rateCheck.allowed) {
+    recordAuditLog(req, clientIp, 'rate_limited', 429, 'rate_limit_exceeded');
+    res.setHeader('Retry-After', rateCheck.resetSeconds);
+    return res.status(429).json({
+      error: 'Too Many Requests',
+      message: `Rate limit exceeded (Max 100 req/min). Please try again in ${rateCheck.resetSeconds} seconds.`,
+      retryAfter: rateCheck.resetSeconds
     });
   }
 
-  // Parse body safely early for all methods
+  // Parse body safely
   let payload = req.body;
   if (typeof payload === 'string') {
     try { payload = JSON.parse(payload); } catch(e) { payload = { raw: req.body }; }
@@ -315,40 +414,136 @@ module.exports = async (req, res) => {
     payload = {};
   }
 
-  // GET: Return global cloud leads, truck types & logs to authenticated frontend
+  const action = req.query?.action || payload?.action || '';
+
+  // ACTION: LOGIN (Set httpOnly Cookie)
+  if (action === 'login' && req.method === 'POST') {
+    const inputToken = (payload?.token || req.query?.secret || req.query?.token || '').trim();
+    if (inputToken === ADMIN_SECRET_TOKEN) {
+      res.setHeader('Set-Cookie', `crm_session=${encodeURIComponent(inputToken)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`);
+      recordAuditLog(req, clientIp, 'admin', 200, 'login_success');
+      return res.status(200).json({
+        success: true,
+        role: 'admin',
+        message: 'Admin authentication successful (httpOnly session cookie established)'
+      });
+    } else if (inputToken === SALES_SECRET_TOKEN) {
+      res.setHeader('Set-Cookie', `crm_session=${encodeURIComponent(inputToken)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`);
+      recordAuditLog(req, clientIp, 'sales', 200, 'login_success');
+      return res.status(200).json({
+        success: true,
+        role: 'sales',
+        message: 'Sales authentication successful (httpOnly session cookie established)'
+      });
+    } else {
+      recordAuditLog(req, clientIp, 'unknown', 401, 'login_failed');
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Invalid Secret Token / Password'
+      });
+    }
+  }
+
+  // ACTION: LOGOUT (Clear httpOnly Cookie)
+  if (action === 'logout') {
+    res.setHeader('Set-Cookie', 'crm_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
+    recordAuditLog(req, clientIp, 'unauthenticated', 200, 'logout');
+    return res.status(200).json({ success: true, message: 'Logged out successfully' });
+  }
+
+  // Verify Authentication for all remaining endpoints
+  const authUser = authenticateUser(req);
+  if (!authUser.authenticated) {
+    recordAuditLog(req, clientIp, 'unauthenticated', 401, action || 'unauthorized_access');
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Access Denied: Valid httpOnly Cookie, X-Pancake-Secret header, or ?secret= token required.'
+    });
+  }
+
+  // ACTION: WHOAMI (Check current session & role)
+  if (action === 'whoami') {
+    recordAuditLog(req, clientIp, authUser.role, 200, 'whoami');
+    return res.status(200).json({
+      authenticated: true,
+      role: authUser.role,
+      userType: authUser.role === 'admin' ? 'Administrator (Full Access)' : 'Sales Representative (Restricted Access)'
+    });
+  }
+
+  // ACTION: AUDIT LOGS (Admin Only)
+  if (action === 'audit_logs') {
+    if (authUser.role !== 'admin') {
+      recordAuditLog(req, clientIp, authUser.role, 403, 'audit_logs_forbidden');
+      return res.status(403).json({ error: 'Forbidden', message: 'Only Administrators can view Security Audit Logs' });
+    }
+    recordAuditLog(req, clientIp, authUser.role, 200, 'view_audit_logs');
+    return res.status(200).json({ success: true, logs: securityAuditLogs });
+  }
+
+  // GET: Return global cloud leads, truck types & logs to authenticated client
   if (req.method === 'GET') {
     await fetchCloudData();
+    recordAuditLog(req, clientIp, authUser.role, 200, 'read_leads');
     return res.status(200).json({
       status: 'online',
       platform: 'vercel',
+      role: authUser.role,
       endpoint: '/api/webhooks/pancake',
       serverTime: new Date().toISOString(),
       leads: memoryLeads,
       recentLeads: memoryLeads.slice(0, 50),
       truckTypes: memoryTruckTypes,
       webhookLogs: webhookLogs.slice(0, 50),
+      securityAuditLogs: authUser.role === 'admin' ? securityAuditLogs.slice(0, 30) : [],
       totalReceived: webhookLogs.length,
       totalLeads: memoryLeads.length
     });
   }
 
-  // PUT / POST with sync action: Save state from frontend (user assigned sales or added truck)
-  if (req.query?.action === 'sync_state' || payload?.action === 'sync_state') {
+  // PUT / POST with sync action: Save state from frontend
+  if (action === 'sync_state') {
+    // RBAC: Role-Based Access Control
+    if (authUser.role === 'sales') {
+      // Sales can only update the 'report' note for leads; they cannot delete leads or change truck list
+      if (Array.isArray(payload?.leads)) {
+        // Merge only report field
+        for (const updatedLead of payload.leads) {
+          const target = memoryLeads.find(l => (updatedLead.id && l.id === updatedLead.id) || l.phone === updatedLead.phone);
+          if (target && updatedLead.report !== undefined) {
+            target.report = updatedLead.report;
+          }
+        }
+      }
+      await saveCloudData(memoryLeads, memoryTruckTypes);
+      recordAuditLog(req, clientIp, authUser.role, 200, 'sync_sales_report');
+      return res.status(200).json({ success: true, message: 'Sales report updated', role: 'sales' });
+    }
+
+    // Admin has full control
     if (Array.isArray(payload?.leads)) memoryLeads = payload.leads;
     if (Array.isArray(payload?.truckTypes)) memoryTruckTypes = payload.truckTypes;
     await saveCloudData(memoryLeads, memoryTruckTypes);
+    recordAuditLog(req, clientIp, authUser.role, 200, 'sync_admin_state');
     return res.status(200).json({ 
       success: true, 
-      message: 'Cloud state synced successfully', 
-      totalLeads: memoryLeads.length 
+      message: 'Cloud state synced successfully by Admin', 
+      totalLeads: memoryLeads.length,
+      role: 'admin'
     });
   }
 
-  // DELETE: Clear server logs if requested
+  // DELETE: Clear server logs (Admin Only)
   if (req.method === 'DELETE') {
+    if (authUser.role !== 'admin') {
+      recordAuditLog(req, clientIp, authUser.role, 403, 'delete_logs_forbidden');
+      return res.status(403).json({ error: 'Forbidden', message: 'Only Admin can clear server logs' });
+    }
     webhookLogs.length = 0;
-    return res.status(200).json({ success: true, message: 'Server logs cleared' });
+    recordAuditLog(req, clientIp, authUser.role, 200, 'clear_logs');
+    return res.status(200).json({ success: true, message: 'Server logs cleared by Admin' });
   }
+
 
 
   if (req.method !== 'POST') {

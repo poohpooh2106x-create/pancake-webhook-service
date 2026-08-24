@@ -586,41 +586,44 @@
       </div>
 
       <div class="nav-actions">
+        <span id="userRoleBadge" style="font-size: 11px; padding: 4px 10px; border-radius: 6px; font-weight: 600; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; display: inline-flex; align-items: center; gap: 4px;">
+          👑 Admin
+        </span>
         <button class="btn" style="background: linear-gradient(135deg, #6366f1, #3b82f6); color: white; border: none; font-weight: 600; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);" onclick="openReportModal()" title="ดูรีพอร์ตสรุปประจำวัน & คัดลอกส่งผู้บริหาร">
           📊 รายงานประจำวัน (Report)
         </button>
-        <button class="btn btn-excel" onclick="promptSecretToken()" title="ตั้งค่า Secret Token / API Key ความปลอดภัย">
-          🔑 รหัส Token
-        </button>
-        <button class="btn btn-webhook" onclick="copyWebhookUrl()">
+        <button class="btn btn-webhook admin-only" onclick="copyWebhookUrl()">
           🔗 /api/webhooks/pancake 📋
         </button>
-
-        <button class="btn btn-excel" onclick="openTruckManageModal()" title="เพิ่ม/แก้ไขประเภทรถที่ลูกค้าสนใจ">
+        <button class="btn btn-excel admin-only" onclick="openTruckManageModal()" title="เพิ่ม/แก้ไขประเภทรถที่ลูกค้าสนใจ">
           ⚙️ จัดการประเภทรถ
         </button>
-        <button class="btn btn-excel" onclick="openLogsModal()" title="ดูประวัติการยิง Webhook จาก PanCake แบบ Real-time">
+        <button class="btn btn-excel admin-only" onclick="openLogsModal()" title="ดูประวัติการยิง Webhook & Security Audit Logs">
           📡 ดู Log (<span id="logCountBadge">0</span>)
         </button>
-        <button class="btn btn-sim" onclick="openSimulatorModal()">
+        <button class="btn btn-sim admin-only" onclick="openSimulatorModal()">
           ▷ จำลองแชทลูกค้า (Simulator)
         </button>
         <button class="btn btn-add" onclick="openAddLeadModal()">
           + เพิ่มเคสเอง
         </button>
-        <button class="btn btn-excel" onclick="backupJSON()" title="สำรองไฟล์ JSON">
+        <button class="btn btn-excel admin-only" onclick="backupJSON()" title="สำรองไฟล์ JSON">
           💾 สำรองข้อมูล
         </button>
-        <button class="btn btn-excel" onclick="restoreJSON()" title="กู้คืนไฟล์ JSON">
+        <button class="btn btn-excel admin-only" onclick="restoreJSON()" title="กู้คืนไฟล์ JSON">
           📂 นำเข้าข้อมูล
         </button>
         <button class="btn btn-excel" onclick="exportToCSV()" title="ดาวน์โหลดไฟล์ Excel/CSV">
           📥 Export Excel
         </button>
-        <button class="btn btn-trash" onclick="clearAllLeads()" title="ล้างข้อมูลทั้งหมด">
+        <button class="btn btn-trash admin-only" onclick="clearAllLeads()" title="ล้างข้อมูลทั้งหมด">
           🗑️
         </button>
+        <button class="btn btn-trash" onclick="logoutCRM()" style="background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.4); color: #f87171;" title="ออกจากระบบ">
+          🚪 Logout
+        </button>
       </div>
+
 
     </header>
 
@@ -881,19 +884,27 @@
     </div>
   </div>
 
-  <!-- LIVE LOGS MODAL -->
+  <!-- LIVE & AUDIT LOGS MODAL -->
   <div class="modal-overlay" id="logsModal">
-    <div class="modal-card" style="max-width: 700px;">
+    <div class="modal-card" style="max-width: 760px;">
       <div class="modal-head">
-        <div class="modal-title">📡 ประวัติการยิง Webhook จาก PanCake (Live Logs)</div>
+        <div class="modal-title">📡 ประวัติ Webhook & Security Audit Logs</div>
         <button class="btn-close" onclick="closeModal('logsModal')">&times;</button>
       </div>
-      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-        หน้านี้จะแสดงข้อมูลดิบ (JSON) ทุกครั้งที่ PanCake ส่ง Webhook เข้ามายังเซิร์ฟเวอร์
-      </p>
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <button class="btn-refresh" id="logTabWebhookBtn" style="background: #2563eb; color: white;" onclick="switchLogTab('webhook')">📡 PanCake Webhook Logs</button>
+        <button class="btn-refresh admin-only" id="logTabAuditBtn" onclick="switchLogTab('audit')">🛡️ Security Audit Logs (ความปลอดภัย)</button>
+      </div>
       <div id="liveLogsContent" style="background: #090e17; border: 1px solid var(--border); border-radius: 8px; padding: 14px; max-height: 360px; overflow-y: auto; font-family: monospace; font-size: 12px; color: #38bdf8;">
         กำลังโหลด Log ล่าสุด...
       </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 12px;">
+        <button class="btn btn-excel" onclick="fetchCurrentTabLogs()">🔄 รีเฟรช Log ตอนนี้</button>
+        <button class="btn btn-trash admin-only" onclick="clearServerLogs()">🗑️ ล้างประวัติ Webhook Log</button>
+      </div>
+    </div>
+  </div>
+
   <!-- DAILY REPORT MODAL -->
   <div class="modal-overlay" id="reportModal">
     <div class="modal-card" style="max-width: 780px;">
@@ -1159,65 +1170,137 @@
     }
 
     // ----------------------------------------------------
-    // SECURE AUTHENTICATED FETCH HELPER & TOKEN ENGINE
+    // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const API_TOKEN_KEY = 'pancake_crm_api_secret_token';
-    const DEFAULT_DEV_TOKEN = 'kp_crm_sec_2026';
+    let currentUserRole = 'admin'; // 'admin' | 'sales'
+    let isPromptingLogin = false;
+    let currentLogTab = 'webhook'; // 'webhook' | 'audit'
+    let latestAuditLogs = [];
 
-    function getStoredToken() {
-      return localStorage.getItem(API_TOKEN_KEY) || DEFAULT_DEV_TOKEN;
-    }
+    async function promptLoginModal(customMsg) {
+      if (isPromptingLogin) return;
+      isPromptingLogin = true;
 
-    function setStoredToken(token) {
-      if (token) {
-        localStorage.setItem(API_TOKEN_KEY, token.trim());
-      }
-    }
-
-    async function promptSecretToken(customMsg) {
       const { value: token } = await Swal.fire({
-        title: '🔒 ตั้งค่า Secret Token (API Key)',
-        html: `<p style="font-size: 13px; color: #94a3b8; margin-bottom: 8px;">${customMsg || 'กรอกรหัส Secret Token เพื่อยืนยันสิทธิ์เข้าถึงข้อมูล CRM'}</p>`,
+        title: '🔒 เข้าสู่ระบบ Pancake Sales CRM',
+        html: `
+          <p style="font-size: 13px; color: #94a3b8; margin-bottom: 12px;">
+            ${customMsg || 'ระบบใช้การยืนยันตัวตนด้วย <strong>httpOnly Cookie</strong> เพื่อความปลอดภัยสูงสุด กรุณากรอก Secret Token / รหัสผ่าน'}
+          </p>
+          <div style="font-size: 11px; text-align: left; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.2); padding: 8px 12px; border-radius: 6px; color: #38bdf8; margin-bottom: 10px;">
+            👑 <strong>Admin Token:</strong> เข้าถึงได้ทั้งหมด 100%<br>
+            👤 <strong>Sales Token:</strong> เข้าอ่านและพิมพ์รีพอร์ตเซลล์ (ไม่อนุญาตให้ลบเคส)
+          </div>
+        `,
         input: 'password',
-        inputPlaceholder: 'กรอก Secret Token...',
-        inputValue: getStoredToken(),
-        showCancelButton: true,
+        inputPlaceholder: 'กรอก Admin หรือ Sales Token...',
+        showCancelButton: false,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
         confirmButtonColor: '#2563eb',
-        confirmButtonText: 'บันทึก Token',
-        cancelButtonText: 'ยกเลิก',
+        confirmButtonText: 'เข้าสู่ระบบ (Login)',
         inputValidator: (val) => {
-          if (!val) return 'กรุณากรอก Secret Token ก่อนเข้าใช้งาน';
+          if (!val) return 'กรุณากรอกรหัสผ่านหรือ Secret Token ก่อนเข้าใช้งาน';
         }
       });
 
+      isPromptingLogin = false;
+
       if (token) {
-        setStoredToken(token);
-        Swal.fire({ icon: 'success', title: 'บันทึกรหัส Token เรียบร้อยแล้ว', timer: 1500, showConfirmButton: false });
-        initData();
+        try {
+          const res = await fetch('/api/webhooks/pancake?action=login', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token.trim() })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            currentUserRole = data.role || 'admin';
+            applyRolePermissions(currentUserRole);
+            Swal.fire({ 
+              icon: 'success', 
+              title: `ยินดีต้อนรับ (${currentUserRole === 'admin' ? '👑 ผู้ดูแลระบบ' : '👤 ฝ่ายขาย'})`, 
+              timer: 1500, 
+              showConfirmButton: false 
+            });
+            initData();
+          } else {
+            promptLoginModal('❌ รหัสผ่าน / Token ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง');
+          }
+        } catch(err) {
+          promptLoginModal('❌ เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + err.message);
+        }
       }
     }
 
-    async function fetchWithAuth(url, options = {}) {
-      const token = getStoredToken();
-      const headers = {
-        ...(options.headers || {}),
-        'X-Pancake-Secret': token
-      };
+    async function logoutCRM() {
+      await fetch('/api/webhooks/pancake?action=logout', { method: 'POST', credentials: 'include' });
+      Swal.fire({
+        icon: 'info',
+        title: 'ออกจากระบบเรียบร้อยแล้ว',
+        timer: 1200,
+        showConfirmButton: false
+      }).then(() => {
+        promptLoginModal('กรุณาเข้าสู่ระบบใหม่อีกครั้ง');
+      });
+    }
 
+    function applyRolePermissions(role) {
+      currentUserRole = role;
+      const roleBadge = document.getElementById('userRoleBadge');
+      if (roleBadge) {
+        if (role === 'admin') {
+          roleBadge.innerHTML = '👑 Admin';
+          roleBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+          roleBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+          roleBadge.style.color = '#34d399';
+        } else {
+          roleBadge.innerHTML = '👤 Sales';
+          roleBadge.style.background = 'rgba(56, 189, 248, 0.15)';
+          roleBadge.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+          roleBadge.style.color = '#38bdf8';
+        }
+      }
+
+      // Hide or disable admin-only controls for Sales role
+      const adminOnlyElements = document.querySelectorAll('.admin-only');
+      adminOnlyElements.forEach(el => {
+        el.style.display = role === 'admin' ? '' : 'none';
+      });
+    }
+
+    async function fetchWithAuth(url, options = {}) {
       try {
-        const res = await fetch(url, { ...options, headers });
+        const res = await fetch(url, {
+          ...options,
+          credentials: 'include' // Sends httpOnly Cookie automatically
+        });
+
         if (res.status === 401) {
-          console.warn('⚠️ 401 Unauthorized: Invalid Secret Token');
-          showSaveIndicator('⚠️ สิทธิ์เข้าถึงไม่ถูกต้อง (Token ไม่ตรง)');
-          promptSecretToken('Token หรือรหัสผ่านไม่ถูกต้อง กรุณากรอกใหม่อีกครั้ง');
+          console.warn('⚠️ 401 Unauthorized: Session cookie missing or expired');
+          showSaveIndicator('⚠️ กรุณาเข้าสู่ระบบ');
+          promptLoginModal('เซสชันหมดอายุหรือยังไม่ได้เข้าสู่ระบบ กรุณากรอก Token');
           return null;
         }
+
+        if (res.status === 429) {
+          const retryAfter = res.headers.get('Retry-After') || 60;
+          Swal.fire({
+            title: '⚠️ คำขอถี่เกินไป (Rate Limit Exceeded)',
+            text: `ระบบจำกัดความเร็วสูงสุด 100 requests/นาที กรุณารอ ${retryAfter} วินาทีแล้วลองใหม่`,
+            icon: 'warning'
+          });
+          return null;
+        }
+
         return res;
       } catch (err) {
         console.error('Fetch error:', err);
         throw err;
       }
     }
+
 
     // 2. Multi-Layer Non-Destructive Storage Loader (กู้คืนและผสานข้อมูลทุกเลเยอร์ ไม่มีวันหาย 100%)
     async function initData() {
@@ -1560,9 +1643,11 @@
               <button class="btn-line-send" onclick="sendToLine(${realIdx})" title="ส่งข้อมูลให้เซลล์ทาง LINE">
                 🟢 ส่ง LINE
               </button>
-              <button class="btn-del-row" onclick="deleteLead(${realIdx})" title="ลบเคสนี้">
-                🗑️
-              </button>
+              ${currentUserRole === 'admin' ? `
+                <button class="btn-del-row" onclick="deleteLead(${realIdx})" title="ลบเคสนี้">
+                  🗑️
+                </button>
+              ` : ''}
             </td>
           </tr>
         `;
@@ -1617,6 +1702,10 @@
     }
 
     function deleteLead(idx) {
+      if (currentUserRole !== 'admin') {
+        Swal.fire('ไม่มีสิทธิ์ลบเคส', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถลบเคสลูกค้าได้', 'warning');
+        return;
+      }
       if (confirm('ต้องการลบเคสนี้ใช่หรือไม่?')) {
         leads.splice(idx, 1);
         saveState();
@@ -1625,6 +1714,10 @@
     }
 
     function clearAllLeads() {
+      if (currentUserRole !== 'admin') {
+        Swal.fire('ไม่มีสิทธิ์ล้างข้อมูล', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถล้างข้อมูลทั้งหมดได้', 'warning');
+        return;
+      }
       Swal.fire({
         title: 'ล้างข้อมูลทั้งหมด?',
         text: 'ต้องการล้างรายการเคสลูกค้าทั้งหมดในระบบใช่หรือไม่',
@@ -1644,6 +1737,7 @@
         }
       });
     }
+
 
     // LINE Notification Generator
     function sendToLine(idx) {
@@ -2306,10 +2400,36 @@ ${adSection}━━━━━━━━━━━━━━━━━━
     }
 
 
-    // Live Logs View
+    function openLogsModal() {
+      document.getElementById('logsModal').style.display = 'flex';
+      switchLogTab('webhook');
+    }
+
+    function switchLogTab(tab) {
+      currentLogTab = tab;
+      const btnWebhook = document.getElementById('logTabWebhookBtn');
+      const btnAudit = document.getElementById('logTabAuditBtn');
+
+      if (tab === 'webhook') {
+        if (btnWebhook) { btnWebhook.style.background = '#2563eb'; btnWebhook.style.color = 'white'; }
+        if (btnAudit) { btnAudit.style.background = '#090e17'; btnAudit.style.color = 'var(--text-muted)'; }
+        fetchLiveLogs();
+      } else {
+        if (btnAudit) { btnAudit.style.background = '#2563eb'; btnAudit.style.color = 'white'; }
+        if (btnWebhook) { btnWebhook.style.background = '#090e17'; btnWebhook.style.color = 'var(--text-muted)'; }
+        fetchAuditLogs();
+      }
+    }
+
+    function fetchCurrentTabLogs() {
+      if (currentLogTab === 'webhook') fetchLiveLogs();
+      else fetchAuditLogs();
+    }
+
+    // Live Logs View (PanCake Webhooks)
     async function fetchLiveLogs() {
       const container = document.getElementById('liveLogsContent');
-      container.innerText = 'กำลังโหลด Log...';
+      container.innerText = 'กำลังโหลด Webhook Log...';
       try {
         const res = await fetchWithAuth('/api/webhooks/pancake');
         if (!res || !res.ok) {
@@ -2337,7 +2457,51 @@ ${adSection}━━━━━━━━━━━━━━━━━━
       }
     }
 
+    // Security Audit Logs View (Timestamp, IP, Token, Method, Path, Status Code)
+    async function fetchAuditLogs() {
+      const container = document.getElementById('liveLogsContent');
+      container.innerText = 'กำลังโหลด Security Audit Logs...';
+      try {
+        const res = await fetchWithAuth('/api/webhooks/pancake?action=audit_logs');
+        if (!res || !res.ok) {
+          container.innerText = 'ไม่สามารถโหลด Audit Log ได้ (เฉพาะ Admin เท่านั้น)';
+          return;
+        }
+        const data = await res.json();
+        if (data.logs && data.logs.length > 0) {
+          container.innerHTML = data.logs.map((item, idx) => `
+            <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px; margin-bottom: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: ${item.statusCode === 200 ? '#4ade80' : (item.statusCode === 429 ? '#fbbf24' : '#f87171')}; font-weight: 600;">
+                  [#${idx+1}] [${item.method}] ${item.statusCode} (${item.role})
+                </span>
+                <span style="color: #94a3b8; font-size: 11px;">⏰ ${item.timestamp}</span>
+              </div>
+              <div style="color: #cbd5e1; font-size: 11px; margin-top: 4px;">
+                🌐 IP: <strong style="color: #38bdf8;">${item.ip}</strong> | Action: <strong style="color: #facc15;">${item.action}</strong> | Token: <code>${item.token}</code>
+              </div>
+              <div style="color: #64748b; font-size: 10px; margin-top: 2px;">
+                Path: ${item.path} | UA: ${item.userAgent}
+              </div>
+            </div>
+          `).join('');
+        } else {
+          container.innerHTML = `
+            <div style="color: #94a3b8; text-align: center; padding: 20px;">
+              🛡️ ยังไม่มี Security Audit Log ในช่วงนี้
+            </div>
+          `;
+        }
+      } catch(err) {
+        container.innerText = 'เกิดข้อผิดพลาดในการโหลด Audit Log: ' + err.message;
+      }
+    }
+
     async function clearServerLogs() {
+      if (currentUserRole !== 'admin') {
+        Swal.fire('ไม่มีสิทธิ์ล้าง Log', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถล้าง Server Log ได้', 'warning');
+        return;
+      }
       try {
         await fetchWithAuth('/api/webhooks/pancake', { method: 'DELETE' });
         fetchLiveLogs();
@@ -2345,6 +2509,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
         Swal.fire('ล้าง Log สำเร็จ', '', 'success');
       } catch(e) {}
     }
+
 
 
     // Auto init
