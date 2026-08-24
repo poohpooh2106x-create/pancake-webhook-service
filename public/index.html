@@ -1569,7 +1569,7 @@
                   if (!existing.sales && serverSales) existing.sales = serverSales;
                   if (!existing.truck && serverLead.truck) existing.truck = serverLead.truck;
                   if (!existing.ad && serverLead.ad) existing.ad = serverLead.ad;
-                  if (!existing.report && serverLead.report) existing.report = serverLead.report;
+                  if (existing.report === undefined && serverLead.report) existing.report = serverLead.report;
                   if (serverLead.source) existing.source = sanitizeChannelName(serverLead.source);
                   masterMap.set(key, existing);
                 } else {
@@ -1605,6 +1605,7 @@
       for (const [key, l] of masterMap.entries()) {
         if (l.phone === '0930189287' || (l.name && l.name.includes('chili'))) {
           l.date = '24/08/2026';
+          l.report = '';
         }
         if (l.phone === '0840957477' || (l.name && l.name.includes('Sathaporn'))) {
           l.date = '24/08/2026';
@@ -2697,8 +2698,8 @@ ${adSection}━━━━━━━━━━━━━━━━━━
                   hasChanges = true;
                 }
 
-                // 4. Sales Report Note
-                if (serverLead.report && !local.report) {
+                // 4. Sales Report Note (Do not overwrite with stale server report if local was cleared to "")
+                if (local.report === undefined && serverLead.report) {
                   local.report = serverLead.report;
                   hasChanges = true;
                 }

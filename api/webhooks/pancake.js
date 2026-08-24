@@ -792,6 +792,15 @@ module.exports = async (req, res) => {
     if (Array.isArray(payload?.leads)) {
       memoryLeads = payload.leads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
     }
+    if (payload?.lead) {
+      const target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
+      if (target) {
+        if (payload.lead.report !== undefined) target.report = payload.lead.report;
+        if (payload.lead.sales !== undefined) target.sales = payload.lead.sales;
+        if (payload.lead.truck !== undefined) target.truck = payload.lead.truck;
+        if (payload.lead.date !== undefined) target.date = payload.lead.date;
+      }
+    }
     if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) memoryTruckTypes = payload.truckTypes;
     await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
     
