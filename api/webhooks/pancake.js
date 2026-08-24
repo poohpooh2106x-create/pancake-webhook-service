@@ -781,7 +781,6 @@ module.exports = async (req, res) => {
         if (target && payload.lead.report !== undefined) {
           target.report = payload.lead.report;
         }
-        await syncToGoogleSheets(payload.lead);
       }
       await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
       recordAuditLog(req, clientIp, authUser.role, 200, 'sync_sales_report');
@@ -803,11 +802,6 @@ module.exports = async (req, res) => {
     }
     if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) memoryTruckTypes = payload.truckTypes;
     await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds);
-    
-    // If a specific lead was updated, sync that lead to Google Sheets
-    if (payload?.lead) {
-      await syncToGoogleSheets(payload.lead);
-    }
 
     recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_admin_state');
     return res.status(200).json({ 
