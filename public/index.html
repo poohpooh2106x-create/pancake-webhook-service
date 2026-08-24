@@ -1468,42 +1468,31 @@
       const masterMap = new Map();
       const localDeletedIds = getLocalBlacklist();
 
-      // Step B: Load from all historical LocalStorage keys (filtering against blacklist)
-      const historicalKeys = [
-        MASTER_LEADS_KEY,
-        BACKUP_LEADS_KEY,
-        'pancake_sales_leads_v3',
-        'pancake_sales_leads_v2',
-        'pancake_sales_leads_v1',
-        'pancake_sales_leads'
-      ];
-
-      for (const k of historicalKeys) {
-        const item = localStorage.getItem(k);
-        if (item) {
-          try {
-            const arr = JSON.parse(item);
-            if (Array.isArray(arr)) {
-              arr.forEach(l => {
-                const key = l.phone || l.id;
-                if (key && !masterMap.has(key) && !isLeadBlacklisted(l, localDeletedIds)) {
-                  masterMap.set(key, {
-                    ...l,
-                    source: sanitizeChannelName(l.source),
-                    truck: l.truck || '',
-                    sales: sanitizeSalesName(l.sales),
-                    ad: l.ad || '',
-                    report: l.report || ''
-                  });
-                }
-              });
-            }
-          } catch(e) {}
-        }
+      // Step B: Load primary Master Leads from LocalStorage (preventing stale historical overwrites)
+      const masterItem = localStorage.getItem(MASTER_LEADS_KEY) || localStorage.getItem(BACKUP_LEADS_KEY) || localStorage.getItem('pancake_sales_leads_v3');
+      if (masterItem) {
+        try {
+          const arr = JSON.parse(masterItem);
+          if (Array.isArray(arr)) {
+            arr.forEach(l => {
+              const key = l.phone || l.id;
+              if (key && !masterMap.has(key) && !isLeadBlacklisted(l, localDeletedIds)) {
+                masterMap.set(key, {
+                  ...l,
+                  source: sanitizeChannelName(l.source),
+                  truck: l.truck || '',
+                  sales: sanitizeSalesName(l.sales),
+                  ad: l.ad || '',
+                  report: l.report !== undefined ? l.report : ''
+                });
+              }
+            });
+          }
+        } catch(e) {}
       }
 
-      // Step C: Load from IndexedDB (filtering against blacklist)
-      if (db) {
+      // Step C: If local master is empty, fallback to IndexedDB or legacy keys
+      if (masterMap.size === 0 && db) {
         try {
           await new Promise((resolve) => {
             const tx = db.transaction(DB_STORE, 'readonly');
@@ -1520,7 +1509,7 @@
                       truck: l.truck || '',
                       sales: sanitizeSalesName(l.sales),
                       ad: l.ad || '',
-                      report: l.report || ''
+                      report: l.report !== undefined ? l.report : ''
                     });
                   }
                 });
@@ -1564,14 +1553,14 @@
               if (key && !isLeadBlacklisted(serverLead, localDeletedIds)) {
                 const serverSales = sanitizeSalesName(serverLead.sales);
                 if (masterMap.has(key)) {
-                  // Merge fields intelligently: keep local sales if server is empty
-                  const existing = masterMap.get(key);
-                  if (!existing.sales && serverSales) existing.sales = serverSales;
-                  if (!existing.truck && serverLead.truck) existing.truck = serverLead.truck;
-                  if (!existing.ad && serverLead.ad) existing.ad = serverLead.ad;
-                  if (existing.report === undefined && serverLead.report) existing.report = serverLead.report;
-                  if (serverLead.source) existing.source = sanitizeChannelName(serverLead.source);
-                  masterMap.set(key, existing);
+                  // Merge fields intelligently: Local modifications always win!
+                  const local = masterMap.get(key);
+                  if (!local.sales && serverSales) local.sales = serverSales;
+                  if (!local.truck && serverLead.truck) local.truck = serverLead.truck;
+                  if (!local.ad && serverLead.ad) local.ad = serverLead.ad;
+                  if (local.report === undefined && serverLead.report !== undefined) local.report = serverLead.report;
+                  if (!local.source && serverLead.source) local.source = sanitizeChannelName(serverLead.source);
+                  masterMap.set(key, local);
                 } else {
                   masterMap.set(key, {
                     ...serverLead,
@@ -1599,17 +1588,6 @@
         }
       } catch(e) {
         console.warn('Could not fetch cloud data, using local master cache:', e);
-      }
-
-      // Finalize leads array with complete merged data, guaranteeing 0 blacklisted leads
-      for (const [key, l] of masterMap.entries()) {
-        if (l.phone === '0930189287' || (l.name && l.name.includes('chili'))) {
-          l.date = '24/08/2026';
-          l.report = '';
-        }
-        if (l.phone === '0840957477' || (l.name && l.name.includes('Sathaporn'))) {
-          l.date = '24/08/2026';
-        }
       }
 
       leads = sortLeadsByDate(Array.from(masterMap.values()).filter(l => !isLeadBlacklisted(l, localDeletedIds)));
@@ -1786,7 +1764,7 @@
     const GOOGLE_SHEETS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzUdIU62Fx5-OS9Ldjx54O_HU5NJtt-C5RoFrF0k1OECVeTnFlyirdEheX6b88e8rBXmw/exec';
 
     function saveLeadState(lead) {
-      saveState(false);
+      saveState(true);
       try {
         fetchWithAuth('/api/webhooks/pancake?action=sync_state', {
           method: 'POST',
@@ -1903,6 +1881,7 @@
               <input type="text" class="input-report" 
                      value="${(lead.report || '').replace(/"/g, '&quot;')}" 
                      placeholder="📝 พิมพ์รีพอร์ต เช่น สนใจเข้ามาดู..." 
+                     oninput="updateLeadReport(${realIdx}, this.value)"
                      onchange="updateLeadReport(${realIdx}, this.value)"
                      style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-light); border-radius: 6px; color: #f1f5f9; padding: 6px 10px; font-size: 12px; width: 100%; min-width: 200px; outline: none; transition: border-color 0.2s, background 0.2s;"
                      onfocus="this.style.borderColor='#38bdf8'; this.style.background='rgba(56,189,248,0.08)';"
