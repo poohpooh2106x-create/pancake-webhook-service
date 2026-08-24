@@ -488,7 +488,8 @@ module.exports = async (req, res) => {
         name: customerName,
         phone: validPhone,
         truck: truck,
-        sales: ''
+        sales: '',
+        report: ''
       };
 
       // Check if lead exists in memoryLeads (e.g. old customer giving number again today)
@@ -507,6 +508,7 @@ module.exports = async (req, res) => {
         leadObj.ad = existing.ad || adSource;
         leadObj.sales = existing.sales || '';
         leadObj.truck = existing.truck || truck;
+        leadObj.report = existing.report || '';
 
         // Move to the top of memory list!
         memoryLeads.splice(existingIdx, 1);
@@ -514,6 +516,7 @@ module.exports = async (req, res) => {
       } else {
         memoryLeads.unshift(leadObj);
       }
+
 
 
       newLeads.push(leadObj);

@@ -727,6 +727,7 @@
               <th>รถที่สนใจ</th>
               <th>📢 ชื่อแอด</th>
               <th>เซลล์ที่รับ</th>
+              <th style="min-width: 220px;">📝 รีพอร์ตจากเซลล์ / บันทึกผล</th>
               <th style="text-align: center;">ส่งต่อ / จัดการ</th>
             </tr>
           </thead>
@@ -734,6 +735,7 @@
             <!-- Populated by JS -->
           </tbody>
         </table>
+
 
       </div>
     </section>
@@ -1428,7 +1430,7 @@
       if (filtered.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="9" class="empty-state">
+            <td colspan="10" class="empty-state">
               📭 ยังไม่มีข้อมูลเคสลูกค้าที่ตรงกับเงื่อนไข<br>
               <span style="font-size: 11px;">(เมื่อ PanCake ส่ง Webhook เข้ามา ข้อมูลจะเด้งขึ้นตรงนี้อัตโนมัติ)</span>
             </td>
@@ -1475,7 +1477,17 @@
                 ${SALES_TEAM.map(s => `<option value="${s.name}" ${lead.sales === s.name ? 'selected' : ''}>${s.name}</option>`).join('')}
               </select>
             </td>
-            <td style="text-align: center;">
+            <td>
+              <input type="text" class="input-report" 
+                     value="${(lead.report || '').replace(/"/g, '&quot;')}" 
+                     placeholder="📝 พิมพ์รีพอร์ต เช่น สนใจเข้ามาดู..." 
+                     onchange="updateLeadReport(${realIdx}, this.value)"
+                     style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-light); border-radius: 6px; color: #f1f5f9; padding: 6px 10px; font-size: 12px; width: 100%; min-width: 200px; outline: none; transition: border-color 0.2s, background 0.2s;"
+                     onfocus="this.style.borderColor='#38bdf8'; this.style.background='rgba(56,189,248,0.08)';"
+                     onblur="this.style.borderColor='var(--border-light)'; this.style.background='rgba(255,255,255,0.04)';"
+              >
+            </td>
+            <td style="text-align: center; white-space: nowrap;">
               <button class="btn-line-send" onclick="sendToLine(${realIdx})" title="ส่งข้อมูลให้เซลล์ทาง LINE">
                 🟢 ส่ง LINE
               </button>
@@ -1487,6 +1499,15 @@
         `;
       }).join('');
     }
+
+    function updateLeadReport(idx, val) {
+      if (leads[idx]) {
+        leads[idx].report = val;
+        saveState(true);
+        showSaveIndicator('บันทึกรีพอร์ตเซลล์แล้ว 💾');
+      }
+    }
+
 
     function sanitizeChannelName(source) {
       if (!source) return 'FB เคพีศรีราชา';
@@ -1639,9 +1660,9 @@
         Swal.fire('ไม่มีข้อมูล', 'ยังไม่มีข้อมูลเคสลูกค้าสำหรับส่งออก', 'info');
         return;
       }
-      let csv = '\uFEFFวันที่รับ,เวลา,ที่มา,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,ชื่อแอด,เซลล์ที่รับ\n';
+      let csv = '\uFEFFวันที่รับ,เวลา,ที่มา,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,ชื่อแอด,เซลล์ที่รับ,รีพอร์ตเซลล์\n';
       leads.forEach(l => {
-        csv += `"${l.date}","${l.time}","${l.source}","${l.name}","\t${l.phone}","${l.truck}","${l.ad || ''}","${l.sales}"\n`;
+        csv += `"${l.date}","${l.time}","${l.source}","${l.name}","\t${l.phone}","${l.truck}","${l.ad || ''}","${l.sales}","${(l.report || '').replace(/"/g, '""')}"\n`;
       });
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
@@ -1649,6 +1670,7 @@
       link.download = `pancake_leads_${new Date().toISOString().slice(0,10)}.csv`;
       link.click();
     }
+
 
     // ----------------------------------------------------
     // SALES REPORT & MANAGEMENT SUMMARY ENGINE
@@ -1905,9 +1927,9 @@ ${adSection}━━━━━━━━━━━━━━━━━━
         Swal.fire('ไม่มีข้อมูล', 'ไม่มีเคสลูกค้าในช่วงเวลาที่เลือก', 'info');
         return;
       }
-      let csv = '\uFEFFวันที่รับ,เวลา,ที่มา,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,ชื่อแอด,เซลล์ที่รับ\n';
+      let csv = '\uFEFFวันที่รับ,เวลา,ที่มา,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,ชื่อแอด,เซลล์ที่รับ,รีพอร์ตเซลล์\n';
       filtered.forEach(l => {
-        csv += `"${l.date}","${l.time}","${l.source}","${l.name}","\t${l.phone}","${l.truck}","${l.ad || ''}","${l.sales}"\n`;
+        csv += `"${l.date}","${l.time}","${l.source}","${l.name}","\t${l.phone}","${l.truck}","${l.ad || ''}","${l.sales}","${(l.report || '').replace(/"/g, '""')}"\n`;
       });
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
@@ -1915,6 +1937,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
       link.download = `pancake_report_${currentReportPeriod}_${new Date().toISOString().slice(0,10)}.csv`;
       link.click();
     }
+
 
 
 
