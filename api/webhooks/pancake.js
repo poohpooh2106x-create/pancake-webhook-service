@@ -237,6 +237,25 @@ function fetchCloudData() {
   });
 }
 
+const GOOGLE_SHEETS_SCRIPT_URL = process.env.GOOGLE_SHEETS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzni4WP8gv0je2k2hWNHd1RWldwxNxYRH1Ap0a2TwpuKqX1E5ZKP79Xwp-R8JhKKq4Hbg/exec';
+
+async function syncLeadToGoogleSheets(lead) {
+  if (!GOOGLE_SHEETS_SCRIPT_URL || !lead || !lead.phone) return;
+  try {
+    const payload = JSON.stringify({ lead });
+    if (typeof fetch === 'function') {
+      fetch(GOOGLE_SHEETS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        redirect: 'follow'
+      }).catch(e => console.warn('Google Sheets sync notice:', e.message));
+    }
+  } catch (e) {
+    console.warn('Google Sheets sync error:', e.message);
+  }
+}
+
 function saveCloudData(leadsList, truckTypesList, logsList) {
   return new Promise((resolve) => {
     if (Array.isArray(leadsList)) memoryLeads = leadsList;
@@ -275,6 +294,7 @@ function saveCloudData(leadsList, truckTypesList, logsList) {
     req.end();
   });
 }
+
 
 async function getSheetsClient() {
   let auth = null;
@@ -587,6 +607,7 @@ module.exports = async (req, res) => {
     if (Array.isArray(payload?.leads)) memoryLeads = payload.leads;
     if (Array.isArray(payload?.truckTypes)) memoryTruckTypes = payload.truckTypes;
     await saveCloudData(memoryLeads, memoryTruckTypes);
+    await syncToGoogleSheets(memoryLeads);
     recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_admin_state');
     return res.status(200).json({ 
       success: true, 

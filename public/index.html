@@ -1578,6 +1578,20 @@
       updateCharts();
     }
 
+    const GOOGLE_SHEETS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzni4WP8gv0je2k2hWNHd1RWldwxNxYRH1Ap0a2TwpuKqX1E5ZKP79Xwp-R8JhKKq4Hbg/exec';
+
+    function syncLeadToGoogleSheets(lead) {
+      if (!GOOGLE_SHEETS_SCRIPT_URL || !lead || !lead.phone) return;
+      try {
+        fetch(GOOGLE_SHEETS_SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lead })
+        }).catch(() => {});
+      } catch(e) {}
+    }
+
     function renderMetrics() {
       const totalLeads = leads.length;
       const assigned = leads.filter(l => l.sales && l.sales !== '').length;
@@ -1710,6 +1724,7 @@
       if (leads[idx]) {
         leads[idx].truck = val;
         saveState();
+        syncLeadToGoogleSheets(leads[idx]);
         try { updateCharts(); } catch(e) {}
         renderTable();
       }
@@ -1719,11 +1734,10 @@
       if (leads[idx]) {
         leads[idx].report = val;
         saveState(true);
+        syncLeadToGoogleSheets(leads[idx]);
         showSaveIndicator('บันทึกรีพอร์ตเซลล์แล้ว 💾');
       }
     }
-
-
 
     function sanitizeChannelName(source) {
       if (!source) return 'FB เคพีศรีราชา';
@@ -1740,6 +1754,7 @@
       if (leads[idx]) {
         leads[idx].source = val;
         saveState();
+        syncLeadToGoogleSheets(leads[idx]);
         renderTable();
       }
     }
@@ -1748,12 +1763,14 @@
       if (leads[idx]) {
         leads[idx].sales = val;
         saveState();
+        syncLeadToGoogleSheets(leads[idx]);
         renderMetrics();
         renderSalesList();
         try { updateCharts(); } catch(e) {}
         renderTable();
       }
     }
+
 
     function deleteLead(idx) {
       if (currentUserRole !== 'admin') {
