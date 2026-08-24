@@ -372,10 +372,12 @@ function authenticateUser(req) {
 }
 
 async function getRawBody(req) {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return {};
   if (req.body && typeof req.body === 'object') return req.body;
   if (typeof req.body === 'string') {
     try { return JSON.parse(req.body); } catch(e) { return { raw: req.body }; }
   }
+  if (!req.on || typeof req.on !== 'function') return {};
   return new Promise((resolve) => {
     let data = '';
     req.on('data', chunk => { data += chunk; });
@@ -385,6 +387,7 @@ async function getRawBody(req) {
     req.on('error', () => resolve({}));
   });
 }
+
 
 module.exports = async (req, res) => {
   // CORS with credentials support (httpOnly Cookie)
