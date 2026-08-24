@@ -265,14 +265,46 @@ async function appendToSheet(rows) {
   return { logOnly: false, updates: response.data.updates };
 }
 
+const ALLOWED_ORIGINS = [
+  'https://pancake-webhook-service.vercel.app',
+  'http://localhost:3000',
+  'http://127.0.0.1:5500',
+  'http://localhost:5000'
+];
+
+function getProvidedToken(req) {
+  const auth = req.headers['authorization'] || '';
+  if (auth.startsWith('Bearer ')) return auth.slice(7).trim();
+  if (req.headers['x-pancake-secret']) return String(req.headers['x-pancake-secret']).trim();
+  if (req.query?.secret) return String(req.query.secret).trim();
+  if (req.query?.token) return String(req.query.token).trim();
+  return null;
+}
+
 module.exports = async (req, res) => {
-  // CORS Headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Pancake-Secret');
+  // 1. Strict CORS Origin Restriction (ป้องกันไม่ให้เว็บอื่นยิงข้ามโดเมน)
+  const reqOrigin = req.headers.origin;
+  if (reqOrigin && ALLOWED_ORIGINS.includes(reqOrigin)) {
+    res.setHeader('Access-Control-Allow-Origin', reqOrigin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', 'https://pancake-webhook-service.vercel.app');
+  }
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Pancake-Secret, Authorization');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).json({ message: 'OK' });
+  }
+
+  // 2. Strict Authentication Check (401 Unauthorized if invalid/missing Secret Token)
+  const SECRET_TOKEN = process.env.PANCAKE_SECRET_TOKEN || 'kp_crm_sec_2026';
+  const clientToken = getProvidedToken(req);
+
+  if (SECRET_TOKEN && clientToken !== SECRET_TOKEN) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Access Denied: Invalid or missing API Key / Secret Token (X-Pancake-Secret header or ?secret= required)'
+    });
   }
 
   // Parse body safely early for all methods
@@ -283,7 +315,7 @@ module.exports = async (req, res) => {
     payload = {};
   }
 
-  // GET: Return global cloud leads, truck types & logs to frontend dashboard
+  // GET: Return global cloud leads, truck types & logs to authenticated frontend
   if (req.method === 'GET') {
     await fetchCloudData();
     return res.status(200).json({
@@ -317,6 +349,7 @@ module.exports = async (req, res) => {
     webhookLogs.length = 0;
     return res.status(200).json({ success: true, message: 'Server logs cleared' });
   }
+
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });

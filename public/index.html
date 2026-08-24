@@ -589,9 +589,13 @@
         <button class="btn" style="background: linear-gradient(135deg, #6366f1, #3b82f6); color: white; border: none; font-weight: 600; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);" onclick="openReportModal()" title="ดูรีพอร์ตสรุปประจำวัน & คัดลอกส่งผู้บริหาร">
           📊 รายงานประจำวัน (Report)
         </button>
+        <button class="btn btn-excel" onclick="promptSecretToken()" title="ตั้งค่า Secret Token / API Key ความปลอดภัย">
+          🔑 รหัส Token
+        </button>
         <button class="btn btn-webhook" onclick="copyWebhookUrl()">
           🔗 /api/webhooks/pancake 📋
         </button>
+
         <button class="btn btn-excel" onclick="openTruckManageModal()" title="เพิ่ม/แก้ไขประเภทรถที่ลูกค้าสนใจ">
           ⚙️ จัดการประเภทรถ
         </button>
@@ -1154,6 +1158,67 @@
       });
     }
 
+    // ----------------------------------------------------
+    // SECURE AUTHENTICATED FETCH HELPER & TOKEN ENGINE
+    // ----------------------------------------------------
+    const API_TOKEN_KEY = 'pancake_crm_api_secret_token';
+    const DEFAULT_DEV_TOKEN = 'kp_crm_sec_2026';
+
+    function getStoredToken() {
+      return localStorage.getItem(API_TOKEN_KEY) || DEFAULT_DEV_TOKEN;
+    }
+
+    function setStoredToken(token) {
+      if (token) {
+        localStorage.setItem(API_TOKEN_KEY, token.trim());
+      }
+    }
+
+    async function promptSecretToken(customMsg) {
+      const { value: token } = await Swal.fire({
+        title: '🔒 ตั้งค่า Secret Token (API Key)',
+        html: `<p style="font-size: 13px; color: #94a3b8; margin-bottom: 8px;">${customMsg || 'กรอกรหัส Secret Token เพื่อยืนยันสิทธิ์เข้าถึงข้อมูล CRM'}</p>`,
+        input: 'password',
+        inputPlaceholder: 'กรอก Secret Token...',
+        inputValue: getStoredToken(),
+        showCancelButton: true,
+        confirmButtonColor: '#2563eb',
+        confirmButtonText: 'บันทึก Token',
+        cancelButtonText: 'ยกเลิก',
+        inputValidator: (val) => {
+          if (!val) return 'กรุณากรอก Secret Token ก่อนเข้าใช้งาน';
+        }
+      });
+
+      if (token) {
+        setStoredToken(token);
+        Swal.fire({ icon: 'success', title: 'บันทึกรหัส Token เรียบร้อยแล้ว', timer: 1500, showConfirmButton: false });
+        initData();
+      }
+    }
+
+    async function fetchWithAuth(url, options = {}) {
+      const token = getStoredToken();
+      const headers = {
+        ...(options.headers || {}),
+        'X-Pancake-Secret': token
+      };
+
+      try {
+        const res = await fetch(url, { ...options, headers });
+        if (res.status === 401) {
+          console.warn('⚠️ 401 Unauthorized: Invalid Secret Token');
+          showSaveIndicator('⚠️ สิทธิ์เข้าถึงไม่ถูกต้อง (Token ไม่ตรง)');
+          promptSecretToken('Token หรือรหัสผ่านไม่ถูกต้อง กรุณากรอกใหม่อีกครั้ง');
+          return null;
+        }
+        return res;
+      } catch (err) {
+        console.error('Fetch error:', err);
+        throw err;
+      }
+    }
+
     // 2. Multi-Layer Non-Destructive Storage Loader (กู้คืนและผสานข้อมูลทุกเลเยอร์ ไม่มีวันหาย 100%)
     async function initData() {
       loadTruckTypes();
@@ -1188,7 +1253,8 @@
                     source: sanitizeChannelName(l.source),
                     truck: l.truck || 'หัวลาก',
                     sales: l.sales || '',
-                    ad: l.ad || ''
+                    ad: l.ad || '',
+                    report: l.report || ''
                   });
                 }
               });
@@ -1214,7 +1280,8 @@
                       source: sanitizeChannelName(l.source),
                       truck: l.truck || 'หัวลาก',
                       sales: l.sales || '',
-                      ad: l.ad || ''
+                      ad: l.ad || '',
+                      report: l.report || ''
                     });
                   }
                 });
@@ -1226,41 +1293,45 @@
         } catch(e) {}
       }
 
-      // Step C: Fetch and merge with Cloud Database
+      // Step C: Fetch and merge with Cloud Database (Authenticated)
       try {
-        const res = await fetch('/api/webhooks/pancake');
-        const data = await res.json();
-        if (Array.isArray(data.leads)) {
-          data.leads.forEach(serverLead => {
-            const key = serverLead.phone || serverLead.id;
-            if (key) {
-              if (masterMap.has(key)) {
-                // Merge fields intelligently: keep local sales if server is empty
-                const existing = masterMap.get(key);
-                if (!existing.sales && serverLead.sales) existing.sales = serverLead.sales;
-                if (!existing.truck && serverLead.truck) existing.truck = serverLead.truck;
-                if (!existing.ad && serverLead.ad) existing.ad = serverLead.ad;
-                if (serverLead.source) existing.source = sanitizeChannelName(serverLead.source);
-                masterMap.set(key, existing);
-              } else {
-                masterMap.set(key, {
-                  ...serverLead,
-                  source: sanitizeChannelName(serverLead.source),
-                  truck: serverLead.truck || 'หัวลาก',
-                  sales: serverLead.sales || '',
-                  ad: serverLead.ad || ''
-                });
+        const res = await fetchWithAuth('/api/webhooks/pancake');
+        if (res && res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.leads)) {
+            data.leads.forEach(serverLead => {
+              const key = serverLead.phone || serverLead.id;
+              if (key) {
+                if (masterMap.has(key)) {
+                  // Merge fields intelligently: keep local sales if server is empty
+                  const existing = masterMap.get(key);
+                  if (!existing.sales && serverLead.sales) existing.sales = serverLead.sales;
+                  if (!existing.truck && serverLead.truck) existing.truck = serverLead.truck;
+                  if (!existing.ad && serverLead.ad) existing.ad = serverLead.ad;
+                  if (!existing.report && serverLead.report) existing.report = serverLead.report;
+                  if (serverLead.source) existing.source = sanitizeChannelName(serverLead.source);
+                  masterMap.set(key, existing);
+                } else {
+                  masterMap.set(key, {
+                    ...serverLead,
+                    source: sanitizeChannelName(serverLead.source),
+                    truck: serverLead.truck || 'หัวลาก',
+                    sales: serverLead.sales || '',
+                    ad: serverLead.ad || '',
+                    report: serverLead.report || ''
+                  });
+                }
               }
-            }
-          });
-        }
-        if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
-          truckTypes = Array.from(new Set([...truckTypes, ...data.truckTypes]));
-          populateTruckSelectInputs();
-        }
-        if (data.webhookLogs && Array.isArray(data.webhookLogs)) {
-          document.getElementById('logCountBadge').innerText = data.webhookLogs.length;
-          latestServerLogs = data.webhookLogs;
+            });
+          }
+          if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
+            truckTypes = Array.from(new Set([...truckTypes, ...data.truckTypes]));
+            populateTruckSelectInputs();
+          }
+          if (data.webhookLogs && Array.isArray(data.webhookLogs)) {
+            document.getElementById('logCountBadge').innerText = data.webhookLogs.length;
+            latestServerLogs = data.webhookLogs;
+          }
         }
       } catch(e) {
         console.warn('Could not fetch cloud data, using local master cache:', e);
@@ -1275,9 +1346,6 @@
       updateAll();
       showSaveIndicator('กู้คืนและผสานข้อมูลทั้งหมดเรียบร้อยแล้ว ✅');
     }
-
-
-
 
     // Save permanently to all layers (Master Key, Backup Key, IndexedDB, Cloud Store)
     async function saveState(syncToCloud = true) {
@@ -1302,10 +1370,10 @@
 
       showSaveIndicator('บันทึกข้อมูลถาวร & ซิงค์คลาวด์แล้ว ☁️');
 
-      // Sync to Universal Cloud Database across all devices
+      // Sync to Universal Cloud Database across all devices (Authenticated)
       if (syncToCloud) {
         try {
-          fetch('/api/webhooks/pancake?action=sync_state', {
+          fetchWithAuth('/api/webhooks/pancake?action=sync_state', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ leads, truckTypes })
@@ -1313,6 +1381,7 @@
         } catch(e) {}
       }
     }
+
 
     function showSaveIndicator(text) {
       const el = document.getElementById('saveIndicator');
@@ -1942,16 +2011,18 @@ ${adSection}━━━━━━━━━━━━━━━━━━
 
 
     function copyWebhookUrl() {
-      const url = window.location.origin + '/api/webhooks/pancake';
+      const token = getStoredToken();
+      const url = `${window.location.origin}/api/webhooks/pancake?secret=${encodeURIComponent(token)}`;
       navigator.clipboard.writeText(url).then(() => {
         Swal.fire({
-          title: 'คัดลอก Webhook URL แล้ว!',
-          html: `<p style="font-size: 13px; color: #94a3b8;">นำ URL ด้านล่างไปใส่ใน <strong>PanCake Settings > Webhook</strong>:</p><br><code style="color: #38bdf8; background: #0f172a; padding: 8px 12px; border-radius: 6px; word-break: break-all;">${url}</code>`,
+          title: 'คัดลอก Webhook URL (พร้อม Token) แล้ว!',
+          html: `<p style="font-size: 13px; color: #94a3b8;">นำ URL ด้านล่างไปใส่ใน <strong>PanCake Settings > Webhook</strong>:</p><br><code style="color: #38bdf8; background: #0f172a; padding: 8px 12px; border-radius: 6px; word-break: break-all;">${url}</code><br><br><small style="color: #4ade80;">✓ มี Secret Token กำกับความปลอดภัยเรียบร้อย</small>`,
           icon: 'success',
           confirmButtonColor: '#2563eb'
         });
       });
     }
+
 
     // Charts
     function initCharts() {
@@ -2117,7 +2188,8 @@ ${adSection}━━━━━━━━━━━━━━━━━━
     // REAL-TIME AUTO SYNC FROM CLOUD DATABASE (POLLING EVERY 3 SECONDS)
     async function refreshLeads() {
       try {
-        const res = await fetch('/api/webhooks/pancake');
+        const res = await fetchWithAuth('/api/webhooks/pancake');
+        if (!res || !res.ok) return;
         const data = await res.json();
 
         // Update Log Count badge in navbar
@@ -2182,14 +2254,19 @@ ${adSection}━━━━━━━━━━━━━━━━━━
                   hasChanges = true;
                 }
 
+                // 4. Sales Report Note
+                if (serverLead.report && !local.report) {
+                  local.report = serverLead.report;
+                  hasChanges = true;
+                }
 
-                // 4. Customer Name
+                // 5. Customer Name
                 if (serverLead.name && serverLead.name !== 'ลูกค้า PanCake' && local.name !== serverLead.name) {
                   local.name = serverLead.name;
                   hasChanges = true;
                 }
 
-                // 5. Returning Customer Timestamp: Bring to TOP of table!
+                // 6. Returning Customer Timestamp: Bring to TOP of table!
                 if (serverLead.date && serverLead.time && (serverLead.date !== local.date || serverLead.time !== local.time)) {
                   local.date = serverLead.date;
                   local.time = serverLead.time;
@@ -2234,7 +2311,11 @@ ${adSection}━━━━━━━━━━━━━━━━━━
       const container = document.getElementById('liveLogsContent');
       container.innerText = 'กำลังโหลด Log...';
       try {
-        const res = await fetch('/api/webhooks/pancake');
+        const res = await fetchWithAuth('/api/webhooks/pancake');
+        if (!res || !res.ok) {
+          container.innerText = 'ไม่สามารถโหลด Log ได้ (สิทธิ์ไม่ถูกต้อง)';
+          return;
+        }
         const data = await res.json();
         if (data.webhookLogs && data.webhookLogs.length > 0) {
           container.innerHTML = data.webhookLogs.map((item, idx) => `
@@ -2258,12 +2339,13 @@ ${adSection}━━━━━━━━━━━━━━━━━━
 
     async function clearServerLogs() {
       try {
-        await fetch('/api/webhooks/pancake', { method: 'DELETE' });
+        await fetchWithAuth('/api/webhooks/pancake', { method: 'DELETE' });
         fetchLiveLogs();
         document.getElementById('logCountBadge').innerText = '0';
         Swal.fire('ล้าง Log สำเร็จ', '', 'success');
       } catch(e) {}
     }
+
 
     // Auto init
     window.addEventListener('DOMContentLoaded', () => {
