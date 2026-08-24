@@ -721,6 +721,7 @@
               <th>ชื่อลูกค้า</th>
               <th>เบอร์โทร</th>
               <th>รถที่สนใจ</th>
+              <th>📢 ชื่อแอด</th>
               <th>เซลล์ที่รับ</th>
               <th style="text-align: center;">ส่งต่อ / จัดการ</th>
             </tr>
@@ -729,6 +730,7 @@
             <!-- Populated by JS -->
           </tbody>
         </table>
+
       </div>
     </section>
   </div>
@@ -786,6 +788,11 @@
       </div>
 
       <div class="form-group">
+        <label class="form-label">ชื่อแอด / คลิปโฆษณา (Ad Title)</label>
+        <input type="text" class="form-input" id="simAd" value="คลิปรีวิวหัวลาก ISUZU 360">
+      </div>
+
+      <div class="form-group">
         <label class="form-label">ข้อความแชทจากลูกค้า (มีเบอร์โทร + รถที่สนใจ)</label>
         <input type="text" class="form-input" id="simMessage" value="สนใจหัวลากครับ เบอร์ 099-731-6431 โทรมาได้เลย">
         <div class="quick-tags">
@@ -821,9 +828,15 @@
       </div>
 
       <div class="form-group">
+        <label class="form-label">ชื่อแอด / แคมเปญ (ถ้ามี)</label>
+        <input type="text" class="form-input" id="addAd" placeholder="เช่น คลิปหัวลาก ISUZU 360">
+      </div>
+
+      <div class="form-group">
         <label class="form-label">ชื่อลูกค้า</label>
         <input type="text" class="form-input" id="addName" placeholder="เช่น คุณสมชาย ใจดี">
       </div>
+
 
       <div class="form-group">
         <label class="form-label">เบอร์โทรศัพท์ (10 หลัก)</label>
@@ -1237,7 +1250,7 @@
       if (filtered.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="8" class="empty-state">
+            <td colspan="9" class="empty-state">
               📭 ยังไม่มีข้อมูลเคสลูกค้าที่ตรงกับเงื่อนไข<br>
               <span style="font-size: 11px;">(เมื่อ PanCake ส่ง Webhook เข้ามา ข้อมูลจะเด้งขึ้นตรงนี้อัตโนมัติ)</span>
             </td>
@@ -1274,6 +1287,9 @@
               <select class="select-sm" onchange="updateLeadTruck(${realIdx}, this.value)">
                 ${truckOptionsHtml}
               </select>
+            </td>
+            <td>
+              ${lead.ad ? `<span style="background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; display: inline-block; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${lead.ad}">📢 ${lead.ad}</span>` : '<span style="color: #64748b; font-size: 12px;">-</span>'}
             </td>
             <td>
               <select class="select-sm" style="${lead.sales ? 'border-color: #10b981; color: #34d399;' : 'border-color: #f59e0b; color: #fbbf24;'}" onchange="updateLeadSales(${realIdx}, this.value)">
@@ -1367,9 +1383,11 @@
       if (!l) return;
 
       const salesText = l.sales ? `เซลล์ที่รับเคส: คุณ${l.sales}` : 'เซลล์ที่รับเคส: (ยังไม่ระบุเซลล์)';
+      const adText = l.ad ? `📢 ชื่อแอด: ${l.ad}\n` : '';
       const msg = `📢 *เคสลูกค้าใหม่จาก PanCake*\n` +
                   `━━━━━━━━━━━━━━━━━━\n` +
                   `🏢 ที่มา: ${l.source}\n` +
+                  adText +
                   `👤 ชื่อลูกค้า: ${l.name}\n` +
                   `📞 เบอร์โทร: ${l.phone}\n` +
                   `🚚 รถที่สนใจ: ${l.truck || 'หัวลาก'}\n` +
@@ -1443,9 +1461,9 @@
         Swal.fire('ไม่มีข้อมูล', 'ยังไม่มีข้อมูลเคสลูกค้าสำหรับส่งออก', 'info');
         return;
       }
-      let csv = '\uFEFFวันที่รับ,เวลา,ที่มา,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,เซลล์ที่รับ\n';
+      let csv = '\uFEFFวันที่รับ,เวลา,ที่มา,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,ชื่อแอด,เซลล์ที่รับ\n';
       leads.forEach(l => {
-        csv += `"${l.date}","${l.time}","${l.source}","${l.name}","\t${l.phone}","${l.truck}","${l.sales}"\n`;
+        csv += `"${l.date}","${l.time}","${l.source}","${l.name}","\t${l.phone}","${l.truck}","${l.ad || ''}","${l.sales}"\n`;
       });
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
@@ -1453,6 +1471,7 @@
       link.download = `pancake_leads_${new Date().toISOString().slice(0,10)}.csv`;
       link.click();
     }
+
 
     function copyWebhookUrl() {
       const url = window.location.origin + '/api/webhooks/pancake';
@@ -1578,16 +1597,17 @@
       }
 
       const truck = detectTruckType(msg);
+      const ad = document.getElementById('simAd') ? document.getElementById('simAd').value.trim() : 'คลิปรีวิวหัวลาก ISUZU 360';
       const { date, time } = getNowThai();
 
-      leads.unshift({ date, time, source, name, phone, truck, sales: '' });
+      leads.unshift({ date, time, source, ad, name, phone, truck, sales: '' });
       saveState();
       updateAll();
       closeModal('simModal');
 
       Swal.fire({
         title: '🎯 ดักจับเบอร์สำเร็จ!',
-        html: `พบเบอร์ <strong>${phone}</strong> จากคุณ <strong>${name}</strong><br>สนใจรถ: <strong>${truck}</strong><br>เพิ่มลงตารางเรียบร้อยแล้ว`,
+        html: `พบเบอร์ <strong>${phone}</strong> จากคุณ <strong>${name}</strong><br>แอด: <strong>${ad}</strong><br>สนใจรถ: <strong>${truck}</strong><br>เพิ่มลงตารางเรียบร้อยแล้ว`,
         icon: 'success',
         timer: 2000,
         showConfirmButton: false
@@ -1597,6 +1617,7 @@
     // Save Manual Lead
     function saveManualLead() {
       const source = document.getElementById('addSource').value;
+      const ad = document.getElementById('addAd') ? document.getElementById('addAd').value.trim() : '';
       const name = document.getElementById('addName').value.trim();
       const rawPhone = document.getElementById('addPhone').value.trim();
       const truck = document.getElementById('addTruck').value;
@@ -1613,15 +1634,17 @@
       }
       const { date, time } = getNowThai();
 
-      leads.unshift({ date, time, source, name, phone, truck, sales });
+      leads.unshift({ date, time, source, ad, name, phone, truck, sales });
       saveState();
       updateAll();
       closeModal('addModal');
 
       document.getElementById('addName').value = '';
       document.getElementById('addPhone').value = '';
+      if (document.getElementById('addAd')) document.getElementById('addAd').value = '';
       Swal.fire('บันทึกสำเร็จ', `เพิ่มเคสลูกค้า ${name} (${phone}) เรียบร้อยแล้ว`, 'success');
     }
+
 
     // REAL-TIME AUTO SYNC FROM CLOUD DATABASE (POLLING EVERY 3 SECONDS)
     async function refreshLeads() {
@@ -1681,11 +1704,16 @@
                   hasChanges = true;
                 }
 
-                // 3. Channel Source
+                // 3. Channel Source & Ad Name
                 if (serverLead.source && local.source !== serverLead.source && serverLead.source !== 'FB เคพีศรีราชา') {
                   local.source = serverLead.source;
                   hasChanges = true;
                 }
+                if (serverLead.ad && local.ad !== serverLead.ad) {
+                  local.ad = serverLead.ad;
+                  hasChanges = true;
+                }
+
 
                 // 4. Customer Name
                 if (serverLead.name && serverLead.name !== 'ลูกค้า PanCake' && local.name !== serverLead.name) {

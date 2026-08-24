@@ -122,7 +122,41 @@ function recordLeadDedupe(id, phone) {
 
 
 
+function extractAdSource(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+
+  // 1. Direct Ad fields from PanCake / Meta
+  const direct = payload.ad_name || payload.ad_title || payload.ad || '';
+  if (direct && typeof direct === 'string') return direct.trim();
+
+  // 2. Referral object in PanCake payload
+  if (payload.referral && typeof payload.referral === 'object') {
+    const ref = payload.referral.ad_title || payload.referral.ad_name || payload.referral.title || payload.referral.ad_id || '';
+    if (ref && typeof ref === 'string') return ref.trim();
+  }
+
+  // 3. Data referral / data ad
+  if (payload.data && typeof payload.data === 'object') {
+    const dAd = payload.data.ad_name || payload.data.ad_title || payload.data.referral?.ad_title || payload.data.referral?.ad_name || '';
+    if (dAd && typeof dAd === 'string') return dAd.trim();
+  }
+
+  // 4. UTM Campaign / Content
+  if (payload.utm_campaign && typeof payload.utm_campaign === 'string') return payload.utm_campaign.trim();
+  if (payload.utm_content && typeof payload.utm_content === 'string') return payload.utm_content.trim();
+  if (payload.utm_term && typeof payload.utm_term === 'string') return payload.utm_term.trim();
+
+  // 5. Extra info / fields
+  if (payload.extra_infor && typeof payload.extra_infor === 'object') {
+    const extra = payload.extra_infor.ad_name || payload.extra_infor.ad_title || payload.extra_infor.ad || '';
+    if (extra && typeof extra === 'string') return extra.trim();
+  }
+
+  return '';
+}
+
 // Cloud Storage Helpers (Global Multi-Device Sync & Persistent Logs)
+
 function fetchCloudData() {
   return new Promise((resolve) => {
     https.get(CLOUD_API_URL, (res) => {
@@ -442,12 +476,14 @@ module.exports = async (req, res) => {
 
       const truck = detectTruckType(item.phone + ' ' + (payload.message || '') + ' ' + JSON.stringify(payload));
       const finalSource = resolveChannelSource(item.source, req.query?.source || req.query?.channel || req.query?.page, payload);
+      const adSource = extractAdSource(payload) || (item.ad || '');
 
       const leadObj = {
         id: item.id || 'lead_' + Date.now(),
         date,
         time,
         source: finalSource,
+        ad: adSource,
         name: customerName,
         phone: validPhone,
         truck: truck,
@@ -463,9 +499,11 @@ module.exports = async (req, res) => {
         existing.date = date;
         existing.time = time;
         existing.source = finalSource;
+        if (adSource) existing.ad = adSource;
         if (customerName !== 'ลูกค้า PanCake') existing.name = customerName;
         if (truck && truck !== 'หัวลาก') existing.truck = truck;
 
+        leadObj.ad = existing.ad || adSource;
         leadObj.sales = existing.sales || '';
         leadObj.truck = existing.truck || truck;
 
@@ -475,6 +513,7 @@ module.exports = async (req, res) => {
       } else {
         memoryLeads.unshift(leadObj);
       }
+
 
       newLeads.push(leadObj);
 
