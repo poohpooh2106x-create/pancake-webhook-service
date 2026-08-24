@@ -237,7 +237,7 @@ function fetchCloudData() {
   });
 }
 
-const GOOGLE_SHEETS_SCRIPT_URL = process.env.GOOGLE_SHEETS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzni4WP8gv0je2k2hWNHd1RWldwxNxYRH1Ap0a2TwpuKqX1E5ZKP79Xwp-R8JhKKq4Hbg/exec';
+const GOOGLE_SHEETS_SCRIPT_URL = process.env.GOOGLE_SHEETS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzUdIU62Fx5-OS9Ldjx54O_HU5NJtt-C5RoFrF0k1OECVeTnFlyirdEheX6b88e8rBXmw/exec';
 
 async function syncLeadToGoogleSheets(lead) {
   if (!GOOGLE_SHEETS_SCRIPT_URL || !lead || !lead.phone) return;
