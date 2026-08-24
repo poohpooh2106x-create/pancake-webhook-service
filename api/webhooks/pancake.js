@@ -239,22 +239,34 @@ function fetchCloudData() {
 
 const GOOGLE_SHEETS_SCRIPT_URL = process.env.GOOGLE_SHEETS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzUdIU62Fx5-OS9Ldjx54O_HU5NJtt-C5RoFrF0k1OECVeTnFlyirdEheX6b88e8rBXmw/exec';
 
-async function syncLeadToGoogleSheets(lead) {
-  if (!GOOGLE_SHEETS_SCRIPT_URL || !lead || !lead.phone) return;
+async function syncToGoogleSheets(data) {
+  if (!GOOGLE_SHEETS_SCRIPT_URL || !data) return;
   try {
-    const payload = JSON.stringify({ lead });
-    if (typeof fetch === 'function') {
+    if (Array.isArray(data)) {
+      for (const lead of data) {
+        if (lead && lead.phone) {
+          fetch(GOOGLE_SHEETS_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lead }),
+            redirect: 'follow'
+          }).catch(() => {});
+        }
+      }
+    } else if (data.phone) {
       fetch(GOOGLE_SHEETS_SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: payload,
+        body: JSON.stringify({ lead: data }),
         redirect: 'follow'
-      }).catch(e => console.warn('Google Sheets sync notice:', e.message));
+      }).catch(() => {});
     }
   } catch (e) {
     console.warn('Google Sheets sync error:', e.message);
   }
 }
+
+const syncLeadToGoogleSheets = syncToGoogleSheets;
 
 function saveCloudData(leadsList, truckTypesList, logsList) {
   return new Promise((resolve) => {
@@ -294,6 +306,7 @@ function saveCloudData(leadsList, truckTypesList, logsList) {
     req.end();
   });
 }
+
 
 
 async function getSheetsClient() {
@@ -501,8 +514,12 @@ module.exports = async (req, res) => {
   let payload = await getRawBody(req);
   if (!payload || typeof payload !== 'object') payload = {};
 
+  // Ensure memoryLeads has latest cloud state
+  await fetchCloudData();
+
   const action = req.query?.action || payload?.action || '';
   const authUser = authenticateUser(req);
+
 
   // ACTION: LOGIN (Set httpOnly Cookie)
   if (action === 'login' && req.method === 'POST') {
