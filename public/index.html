@@ -1602,14 +1602,23 @@
       }
 
       // Finalize leads array with complete merged data, guaranteeing 0 blacklisted leads
-      leads = Array.from(masterMap.values()).filter(l => !isLeadBlacklisted(l, localDeletedIds));
+      for (const [key, l] of masterMap.entries()) {
+        if (l.phone === '0930189287' || (l.name && l.name.includes('chili'))) {
+          l.date = '24/08/2026';
+        }
+        if (l.phone === '0840957477' || (l.name && l.name.includes('Sathaporn'))) {
+          l.date = '24/08/2026';
+        }
+      }
+
+      leads = sortLeadsByDate(Array.from(masterMap.values()).filter(l => !isLeadBlacklisted(l, localDeletedIds)));
       scannedMessageCount = leads.length;
 
       // Cleanse local storage to permanently remove any old deleted remnants
       cleanseAllLocalStorages(localDeletedIds);
 
-      // Save complete merged state locally without forcing a full cloud overwrite
-      saveState(false);
+      // Save complete merged state locally and sync to cloud
+      saveState(true);
       updateAll();
       showSaveIndicator('กู้คืนและผสานข้อมูลทั้งหมดเรียบร้อยแล้ว ✅');
     }
@@ -1617,6 +1626,7 @@
     // Save permanently to all layers (Master Key, Backup Key, IndexedDB, Cloud Store)
     async function saveState(syncToCloud = true) {
       try {
+        leads = sortLeadsByDate(leads);
         const json = JSON.stringify(leads);
         localStorage.setItem(MASTER_LEADS_KEY, json);
         localStorage.setItem(BACKUP_LEADS_KEY, json);
@@ -1661,6 +1671,58 @@
         el.style.opacity = '1';
         setTimeout(() => { el.style.opacity = '0.7'; }, 3000);
       }
+    }
+
+    // Helper: Parse DD/MM/YYYY and HH:mm:ss to timestamp
+    function parseLeadDateTime(dateStr, timeStr) {
+      if (!dateStr) return 0;
+      try {
+        let d = 1, m = 1, y = 1970;
+        if (dateStr.includes('/')) {
+          const parts = dateStr.split('/');
+          if (parts.length === 3) {
+            d = parseInt(parts[0], 10);
+            m = parseInt(parts[1], 10) - 1;
+            y = parseInt(parts[2], 10);
+          }
+        } else if (dateStr.includes('-')) {
+          const parts = dateStr.split('-');
+          if (parts.length === 3) {
+            if (parts[0].length === 4) {
+              y = parseInt(parts[0], 10);
+              m = parseInt(parts[1], 10) - 1;
+              d = parseInt(parts[2], 10);
+            } else {
+              d = parseInt(parts[0], 10);
+              m = parseInt(parts[1], 10) - 1;
+              y = parseInt(parts[2], 10);
+            }
+          }
+        }
+
+        let hh = 0, mm = 0, ss = 0;
+        if (timeStr) {
+          const tParts = timeStr.split(':');
+          if (tParts.length >= 2) {
+            hh = parseInt(tParts[0], 10) || 0;
+            mm = parseInt(tParts[1], 10) || 0;
+            ss = parseInt(tParts[2], 10) || 0;
+          }
+        }
+
+        return new Date(y, m, d, hh, mm, ss).getTime() || 0;
+      } catch(e) {
+        return 0;
+      }
+    }
+
+    function sortLeadsByDate(leadsArray) {
+      if (!Array.isArray(leadsArray)) return [];
+      return leadsArray.sort((a, b) => {
+        const timeA = parseLeadDateTime(a.date, a.time);
+        const timeB = parseLeadDateTime(b.date, b.time);
+        return timeB - timeA; // Newest first at top!
+      });
     }
 
     // Helper: Normalize Thai Phone Number
@@ -1771,7 +1833,7 @@
       const tbody = document.getElementById('leadsTableBody');
       const query = document.getElementById('tableSearch').value.toLowerCase().trim();
 
-      let filtered = leads;
+      let filtered = sortLeadsByDate([...leads]);
       if (currentFilter !== 'ทั้งหมด') {
         filtered = filtered.filter(l => sanitizeChannelName(l.source) === currentFilter);
       }
@@ -1894,6 +1956,16 @@
         leads[idx].source = val;
         saveLeadState(leads[idx]);
         renderTable();
+      }
+    }
+
+    function updateLeadDate(idx, val) {
+      if (leads[idx] && val) {
+        leads[idx].date = val.trim();
+        leads = sortLeadsByDate(leads);
+        saveLeadState(leads[idx]);
+        renderTable();
+        try { updateCharts(); } catch(e) {}
       }
     }
 
@@ -2669,6 +2741,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
           }
 
           if (hasChanges) {
+            leads = sortLeadsByDate(leads);
             saveState(false); // Save locally without echoing back to cloud
             updateAll();
           }

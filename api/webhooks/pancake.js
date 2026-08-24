@@ -74,6 +74,57 @@ function isBlacklistedLead(lead, blacklist) {
   return false;
 }
 
+function parseLeadDateTime(dateStr, timeStr) {
+  if (!dateStr) return 0;
+  try {
+    let d = 1, m = 1, y = 1970;
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split('/');
+      if (parts.length === 3) {
+        d = parseInt(parts[0], 10);
+        m = parseInt(parts[1], 10) - 1;
+        y = parseInt(parts[2], 10);
+      }
+    } else if (dateStr.includes('-')) {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          y = parseInt(parts[0], 10);
+          m = parseInt(parts[1], 10) - 1;
+          d = parseInt(parts[2], 10);
+        } else {
+          d = parseInt(parts[0], 10);
+          m = parseInt(parts[1], 10) - 1;
+          y = parseInt(parts[2], 10);
+        }
+      }
+    }
+
+    let hh = 0, mm = 0, ss = 0;
+    if (timeStr) {
+      const tParts = timeStr.split(':');
+      if (tParts.length >= 2) {
+        hh = parseInt(tParts[0], 10) || 0;
+        mm = parseInt(tParts[1], 10) || 0;
+        ss = parseInt(tParts[2], 10) || 0;
+      }
+    }
+
+    return new Date(y, m, d, hh, mm, ss).getTime() || 0;
+  } catch(e) {
+    return 0;
+  }
+}
+
+function sortLeadsByDate(leadsArray) {
+  if (!Array.isArray(leadsArray)) return [];
+  return leadsArray.sort((a, b) => {
+    const timeA = parseLeadDateTime(a.date, a.time);
+    const timeB = parseLeadDateTime(b.date, b.time);
+    return timeB - timeA;
+  });
+}
+
 /**
  * Universal Recursive Deep Scan Helper for Thai Phone Numbers in any JSON structure
  */
@@ -307,15 +358,16 @@ async function syncToGoogleSheets(data) {
 
 function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList) {
   return new Promise((resolve) => {
-    if (Array.isArray(leadsList)) memoryLeads = leadsList;
+    if (Array.isArray(leadsList)) memoryLeads = sortLeadsByDate(leadsList);
     if (Array.isArray(truckTypesList)) memoryTruckTypes = truckTypesList;
     if (Array.isArray(logsList)) webhookLogs = logsList;
     if (Array.isArray(deletedIdsList)) memoryDeletedIds = deletedIdsList;
 
     // Filter memoryLeads against blacklist before saving to cloud
     if (memoryDeletedIds.length > 0) {
-      memoryLeads = memoryLeads.filter(l => !memoryDeletedIds.includes(l.phone) && (!l.id || !memoryDeletedIds.includes(l.id)));
+      memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
     }
+    memoryLeads = sortLeadsByDate(memoryLeads);
 
     const payload = JSON.stringify({
       name: 'PancakeCRM_Leads',
@@ -645,6 +697,7 @@ module.exports = async (req, res) => {
     if (memoryDeletedIds.length > 0) {
       memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
     }
+    memoryLeads = sortLeadsByDate(memoryLeads);
 
     return res.status(200).json({
       status: 'online',
