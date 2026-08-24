@@ -1039,21 +1039,20 @@
       '#14b8a6', '#f43f5e', '#84cc16', '#8b5cf6'
     ];
 
-    // Load Truck Types (Multi-layer)
+    // Load Truck Types (Direct user list, NEVER re-merges deleted trucks)
     function loadTruckTypes() {
-      const keys = [TRUCKS_STORAGE_KEY, 'pancake_truck_types_master', 'pancake_truck_types_v2'];
-      for (const k of keys) {
-        const saved = localStorage.getItem(k);
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              truckTypes = Array.from(new Set([...truckTypes, ...parsed]));
-              break;
-            }
-          } catch(e) {}
-        }
+      const saved = localStorage.getItem(TRUCKS_STORAGE_KEY) || localStorage.getItem('pancake_truck_types_master');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            truckTypes = [...parsed]; // Use exact saved list
+            populateTruckSelectInputs();
+            return;
+          }
+        } catch(e) {}
       }
+      truckTypes = [...DEFAULT_TRUCKS];
       populateTruckSelectInputs();
     }
 
@@ -1064,12 +1063,12 @@
         localStorage.setItem('pancake_truck_types_master', JSON.stringify(truckTypes));
       } catch(e) {}
 
-      try { populateTruckSelectInputs(); } catch(e) {}
-      try { renderTruckTypesList(); } catch(e) {}
-      try { renderTable(); } catch(e) {}
+      populateTruckSelectInputs();
+      renderTruckTypesList();
+      renderTable();
       try { updateCharts(); } catch(e) {}
 
-      // Non-blocking sync to cloud
+      // Immediately sync customized truck types to Cloud Database!
       saveState(true);
     }
 
@@ -1121,12 +1120,11 @@
     }
 
     function removeTruckType(idx) {
-      const name = truckTypes[idx];
       if (truckTypes.length <= 1) {
         Swal.fire({ title: 'ไม่สามารถลบได้', text: 'ต้องมีประเภทรถอย่างน้อย 1 รายการ', icon: 'warning' });
         return;
       }
-      truckTypes.splice(idx, 1);
+      const name = truckTypes.splice(idx, 1)[0];
       saveTruckTypes();
 
       const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
@@ -1137,12 +1135,13 @@
       const addSelect = document.getElementById('addTruck');
       if (addSelect) {
         const currentVal = addSelect.value;
-        addSelect.innerHTML = truckTypes.map(t => `<option value="${t}">${t}</option>`).join('');
+        addSelect.innerHTML = `<option value="">-- ยังไม่ระบุ / ว่างไว้ --</option>` + truckTypes.map(t => `<option value="${t}">${t}</option>`).join('');
         if (currentVal && truckTypes.includes(currentVal)) {
           addSelect.value = currentVal;
         }
       }
     }
+
 
     // 1. Initialize IndexedDB for permanent storage
     function initIndexedDB() {
@@ -1451,11 +1450,12 @@
             });
           }
           if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
-            if (Date.now() - lastTruckEditTime > 10000) {
+            if (!localStorage.getItem(TRUCKS_STORAGE_KEY)) {
               truckTypes = [...data.truckTypes];
               populateTruckSelectInputs();
             }
           }
+
           if (data.webhookLogs && Array.isArray(data.webhookLogs)) {
             document.getElementById('logCountBadge').innerText = data.webhookLogs.length;
             latestServerLogs = data.webhookLogs;
