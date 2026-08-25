@@ -168,22 +168,51 @@ function resolveChannelSource(rawSource, querySource, payload) {
     return querySource.trim();
   }
   
-  const pName = payload?.page_name || payload?.page?.name || payload?.data?.page_name || '';
-  const raw = Array.isArray(rawSource) ? rawSource.join(',') : String(rawSource || pName || '');
-  const candidate = raw.trim();
+  const possibleNames = [
+    rawSource,
+    payload?.page_name,
+    payload?.page?.name,
+    payload?.data?.page_name,
+    payload?.data?.page?.name,
+    payload?.customer?.page_name,
+    payload?.customer?.source,
+    payload?.from?.page_name
+  ];
+
+  let candidate = '';
+  for (const name of possibleNames) {
+    if (name) {
+      const s = Array.isArray(name) ? name.join(',') : String(name).trim();
+      if (s && !/^[-0-9,\s_]+$/.test(s)) {
+        candidate = s;
+        break;
+      }
+    }
+  }
+
+  if (!candidate) {
+    const raw = Array.isArray(rawSource) ? rawSource.join(',') : String(rawSource || '');
+    if (raw && !/^[-0-9,\s_]+$/.test(raw.trim())) {
+      candidate = raw.trim();
+    }
+  }
 
   // Match against dynamic custom channel list
-  if (Array.isArray(memoryChannels)) {
+  if (candidate && Array.isArray(memoryChannels)) {
     const matched = memoryChannels.find(c => c && candidate.toLowerCase() === c.toLowerCase());
     if (matched) return matched;
   }
 
-  if (candidate.includes('เฮียตั้ม') || candidate.toLowerCase().includes('tum')) return 'FB เฮียตั้มรถติด';
-  if (candidate.includes('เคพี') || candidate.toLowerCase().includes('kp')) return 'FB เคพีศรีราชา';
-  if (candidate.toLowerCase().includes('tiktok')) return 'TikTok';
-  if (candidate.toLowerCase().includes('loa') || candidate.toLowerCase().includes('line')) return 'LOA เคพี';
+  if (candidate) {
+    if (candidate.toLowerCase().includes('marketplace')) return 'Marketplace';
+    if (candidate.includes('เฮียตั้ม') || candidate.toLowerCase().includes('tum')) return 'FB เฮียตั้มรถติด';
+    if (candidate.includes('เคพี') || candidate.toLowerCase().includes('kp')) return 'FB เคพีศรีราชา';
+    if (candidate.toLowerCase().includes('tiktok')) return 'TikTok';
+    if (candidate.toLowerCase().includes('loa') || candidate.toLowerCase().includes('line')) return 'LOA เคพี';
+    return candidate;
+  }
 
-  return candidate || 'FB เคพีศรีราชา';
+  return 'FB เคพีศรีราชา';
 }
 
 function getThaiDateTime() {
