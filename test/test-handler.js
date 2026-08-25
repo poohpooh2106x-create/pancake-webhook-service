@@ -2,6 +2,7 @@
  * Comprehensive Automated Tests for PanCake Webhook Handler
  * Endpoint handler: api/webhooks/pancake.js
  */
+process.env.NODE_ENV = 'test';
 const assert = require('assert');
 const pancakeHandler = require('../api/webhooks/pancake.js');
 

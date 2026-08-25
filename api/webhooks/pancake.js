@@ -330,6 +330,9 @@ function extractAdSource(payload) {
 // Cloud Storage Helpers (Global Multi-Device Sync & Persistent Logs)
 
 function fetchCloudData() {
+  if (process.env.NODE_ENV === 'test') {
+    return Promise.resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, channels: memoryChannels, deletedIds: memoryDeletedIds, logs: webhookLogs });
+  }
   return new Promise((resolve) => {
     https.get(CLOUD_API_URL, (res) => {
       let body = '';
@@ -403,19 +406,23 @@ async function syncToGoogleSheets(data) {
 }
 
 function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList, channelsList) {
+  if (Array.isArray(leadsList)) memoryLeads = sortLeadsByDate(leadsList);
+  if (Array.isArray(truckTypesList)) memoryTruckTypes = truckTypesList;
+  if (Array.isArray(channelsList)) memoryChannels = channelsList;
+  if (Array.isArray(logsList)) webhookLogs = logsList;
+  if (Array.isArray(deletedIdsList)) memoryDeletedIds = deletedIdsList;
+
+  // Filter memoryLeads against blacklist before saving to cloud
+  if (memoryDeletedIds.length > 0) {
+    memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
+  }
+  memoryLeads = sortLeadsByDate(memoryLeads);
+
+  if (process.env.NODE_ENV === 'test') {
+    return Promise.resolve(true);
+  }
+
   return new Promise((resolve) => {
-    if (Array.isArray(leadsList)) memoryLeads = sortLeadsByDate(leadsList);
-    if (Array.isArray(truckTypesList)) memoryTruckTypes = truckTypesList;
-    if (Array.isArray(channelsList)) memoryChannels = channelsList;
-    if (Array.isArray(logsList)) webhookLogs = logsList;
-    if (Array.isArray(deletedIdsList)) memoryDeletedIds = deletedIdsList;
-
-    // Filter memoryLeads against blacklist before saving to cloud
-    if (memoryDeletedIds.length > 0) {
-      memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
-    }
-    memoryLeads = sortLeadsByDate(memoryLeads);
-
     const payload = JSON.stringify({
       name: 'PancakeCRM_Leads',
       data: {
