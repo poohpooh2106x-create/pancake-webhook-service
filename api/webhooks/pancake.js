@@ -584,7 +584,14 @@ function fetchCloudData() {
         try {
           const json = JSON.parse(body);
           if (json.data && Array.isArray(json.data.leads)) {
-            memoryLeads = json.data.leads;
+            const cloudLeads = json.data.leads.filter(l => l && l.phone && l.phone !== '0812345678');
+            const merged = [...cloudLeads];
+            for (const ml of DEFAULT_MASTER_LEADS) {
+              if (!merged.some(l => (ml.id && l.id === ml.id) || l.phone === ml.phone)) {
+                merged.push(ml);
+              }
+            }
+            memoryLeads = merged.length > 0 ? merged : [...DEFAULT_MASTER_LEADS];
             if (Array.isArray(json.data.truckTypes) && json.data.truckTypes.length > 0) {
               memoryTruckTypes = json.data.truckTypes;
             }
