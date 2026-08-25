@@ -9,10 +9,253 @@ const https = require('https');
 const CLOUD_OBJECT_ID = 'ff8081819ff5b11001a027ca21547381';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 
+const DEFAULT_MASTER_LEADS = [
+  {
+    id: "lead_20260825_083635_0610098596",
+    date: "25/08/2026",
+    time: "8:36:35",
+    name: "นายจรูญ ชนะงาม",
+    phone: "0610098596",
+    source: "FB เคพีศรีราชา",
+    truck: "หาง",
+    sales: "จิ๊บ",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "eb62b62f-c641-4cfe-8505-c77f7a4285b6",
+    date: "24/08/2026",
+    time: "20:43:24",
+    name: "พงษ์นนท์ นันทพันธ์",
+    phone: "0642723396",
+    source: "FB เคพีศรีราชา",
+    truck: "",
+    sales: "",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "20c55909-cba2-4496-adac-eb2cbb50ac1e",
+    date: "24/08/2026",
+    time: "18:06:51",
+    name: "Kheng Sa-uenram",
+    phone: "0819804209",
+    source: "FB เคพีศรีราชา",
+    truck: "",
+    sales: "",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_20260824_155459_0985176747",
+    date: "24/08/2026",
+    time: "15:54:59",
+    name: "Nay Win",
+    phone: "0985176747",
+    source: "Marketplace",
+    truck: "โดยสาร",
+    sales: "จิ๊บ",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_20260824_154154_0959509599",
+    date: "24/08/2026",
+    time: "15:41:54",
+    name: "Anurak",
+    phone: "0959509599",
+    source: "Marketplace",
+    truck: "โดยสาร",
+    sales: "เฟิร์น",
+    ad: "",
+    report: "ติดต่อ 16:48 น. คุยรายละเอียดเรื่องรถ ลูกค้าสนใจเป็น 4 ล้อรับไปค่ะอยากได้เป็นแบบลอกแลกมีกำลังประเมินราคาให้อยู่ครับ"
+  },
+  {
+    id: "lead_20260824_141015_0928875644",
+    date: "24/08/2026",
+    time: "14:10:15",
+    name: "สหัสเดช เจริญลาภ",
+    phone: "0928875644",
+    source: "FB เคพีศรีราชา",
+    truck: "หัวลาก",
+    sales: "วุธ",
+    ad: "",
+    report: "ซื้อ เป็นรถคันแรก อาชีพ ไม่ค่อยเข้าเงื่อนไข อยู่ ต่างจังหวัด สอบถามข้อมูลไว้ จะโทรมาหาใหม่ ถ้า ปรึกษากับแฟนแล้ว"
+  },
+  {
+    id: "lead_20260824_135838_0863824419",
+    date: "24/08/2026",
+    time: "13:58:38",
+    name: "สุวิทย์ แหลมสัมฤทธิ์",
+    phone: "0863824419",
+    source: "FB เคพีศรีราชา",
+    truck: "ตู้10",
+    sales: "เฟิร์น",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_20260824_112010_0840957477",
+    date: "24/08/2026",
+    time: "11:20:10",
+    name: "Sathaporn Piyaboonpanya",
+    phone: "0840957477",
+    source: "FB เคพีศรีราชา",
+    truck: "ตู้10",
+    sales: "จิ๊บ",
+    ad: "",
+    report: "ทดสอบการอัปเดตลงชีต"
+  },
+  {
+    id: "lead_20260824_111530_0930189287",
+    date: "24/08/2026",
+    time: "11:15:30",
+    name: "chili(เมร์)",
+    phone: "0930189287",
+    source: "FB เคพีศรีราชา",
+    truck: "โดยสาร",
+    sales: "ปุ๊ก",
+    ad: "",
+    report: "ลูกค้าต้องการ รถสองแถว ราคา 3-4 แสน ซื้อเงินสด เสนอราคา หกส้อเกษตรมีหลังคาไปแล้ว จะเสนอ เจ้านาย ดูครับ"
+  },
+  {
+    id: "570f8dab-320b-4488-8fa0-1bdd5bfcf473",
+    date: "24/08/2026",
+    time: "10:17:13",
+    name: "Theeraphat Nuhoung",
+    phone: "0963577542",
+    source: "FB เคพีศรีราชา",
+    truck: "ตู้10",
+    sales: "เฟิร์น",
+    ad: "[ AI EXPERT ADS ] - รถตัด และ คลิปแรกเจ...",
+    report: "โทรติดต่อแล้ว ลูกค้าสนใจเข้ามาดูวันเสาร์"
+  },
+  {
+    id: "3e5ee0d6-1b4d-4be0-80a5-ae88ba46f731",
+    date: "24/08/2026",
+    time: "10:01:53",
+    name: "ศุภรัตน์ นาคพงศ์",
+    phone: "0653189838",
+    source: "FB เคพีศรีราชา",
+    truck: "ตู้10",
+    sales: "เฟิร์น",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "b4c2b9f3-8f0c-43f1-b851-4043b2f5ee66",
+    date: "24/08/2026",
+    time: "09:25:04",
+    name: "Ome Boonyai",
+    phone: "0828758814",
+    source: "FB เคพีศรีราชา",
+    truck: "ตู้10",
+    sales: "จิ๊บ",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "6e26b158-b6ec-4581-9b16-aa971cbfb9b3",
+    date: "24/08/2026",
+    time: "09:11:09",
+    name: "สามารถ ศรีนามล",
+    phone: "0650271577",
+    source: "FB เคพีศรีราชา",
+    truck: "คอก",
+    sales: "เกด",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "277e92da-19ce-4cb0-a54f-56bb4bf6487e",
+    date: "22/08/2026",
+    time: "11:49:27",
+    name: "ประกายฟ้า สานนอก",
+    phone: "0997316431",
+    source: "FB เคพีศรีราชา",
+    truck: "หัวลาก",
+    sales: "ท็อป",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "f833b3ea-7222-4aee-bda0-8797f7faea4b",
+    date: "22/08/2026",
+    time: "11:49:15",
+    name: "ชีวิตคือ การเดินทาง",
+    phone: "0988918611",
+    source: "FB เคพีศรีราชา",
+    truck: "หัวลาก",
+    sales: "เกด",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "a75ba5ba-fe02-4ec4-9df2-50ea04153924",
+    date: "22/08/2026",
+    time: "11:44:19",
+    name: "Supattana Wongkom",
+    phone: "0961917277",
+    source: "FB เคพีศรีราชา",
+    truck: "เครน",
+    sales: "ม่า",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_20260822_114825_0997316432",
+    date: "22/08/2026",
+    time: "11:48:25",
+    name: "ประกายฟ้า สานนอก",
+    phone: "0997316432",
+    source: "FB เคพีศรีราชา",
+    truck: "หัวลาก",
+    sales: "",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "d9e830e0-31fe-4fa2-b258-7ca8c919a05b",
+    date: "22/08/2026",
+    time: "16:21:40",
+    name: "ณัฐพงษ์ บุญวงศ์",
+    phone: "0897402202",
+    source: "FB เคพีศรีราชา",
+    truck: "หัวลาก",
+    sales: "",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "e578c7ba-1779-450f-aa48-6a56ec9419fb",
+    date: "22/08/2026",
+    time: "16:21:18",
+    name: "นาย อำนวยชัย",
+    phone: "0865401249",
+    source: "FB เคพีศรีราชา",
+    truck: "หัวลาก",
+    sales: "",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "08c9d4ca-9cfa-4ebf-8182-557343e8bb24",
+    date: "22/08/2026",
+    time: "16:02:48",
+    name: "Sawai Sinoun",
+    phone: "0817251742",
+    source: "FB เคพีศรีราชา",
+    truck: "หัวลาก",
+    sales: "วุธ",
+    ad: "",
+    report: ""
+  }
+];
+
 // Local Memory Cache (Loaded dynamically from Cloud Database via fetchCloudData)
-let memoryLeads = [];
-let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'เครน'];
-let memoryChannels = ['FB เคพีศรีราชา', 'TikTok', 'LOA เคพี', 'FB เฮียตั้มรถติด', 'อื่นๆ'];
+let memoryLeads = [...DEFAULT_MASTER_LEADS];
+let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'เครน', 'คอก', 'โดยสาร', 'อื่นๆ'];
+let memoryChannels = ['FB เคพีศรีราชา', 'TikTok', 'LOA เคพี', 'FB เฮียตั้มรถติด', 'Marketplace', 'อื่นๆ'];
 let memoryDeletedIds = [];
 let webhookLogs = [];
 const dedupeCache = new Map();
