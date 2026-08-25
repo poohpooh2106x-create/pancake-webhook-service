@@ -492,24 +492,58 @@ function recordLeadDedupe(id, phone) {
 function extractAdSource(payload) {
   if (!payload || typeof payload !== 'object') return '';
 
-  // 1. Direct & Nested known fields from Meta & PanCake
+  // 1. Direct & Deeply Nested candidate paths from Meta & PanCake
   const candidates = [
+    payload.ad_title,
+    payload.ad_name,
+    payload.ad,
     payload.ads_context_data?.ad_title,
     payload.ads_context_data?.ad_name,
+    payload.ads_context_data?.title,
     payload.referral?.ads_context_data?.ad_title,
     payload.referral?.ads_context_data?.ad_name,
+    payload.referral?.ads_context_data?.title,
     payload.referral?.ad_title,
     payload.referral?.ad_name,
     payload.referral?.title,
+    payload.referral?.ref,
+    payload.data?.ad_title,
+    payload.data?.ad_name,
+    payload.data?.ad,
     payload.data?.ads_context_data?.ad_title,
+    payload.data?.ads_context_data?.ad_name,
     payload.data?.referral?.ads_context_data?.ad_title,
+    payload.data?.referral?.ads_context_data?.ad_name,
     payload.data?.referral?.ad_title,
     payload.data?.referral?.ad_name,
-    payload.data?.ad_name,
-    payload.data?.ad_title,
-    payload.ad_name,
-    payload.ad_title,
-    payload.ad,
+    payload.data?.conversation?.ad_title,
+    payload.data?.conversation?.ad_name,
+    payload.data?.conversation?.ads_context_data?.ad_title,
+    payload.data?.conversation?.ads_context_data?.ad_name,
+    payload.data?.conversation?.referral?.ad_title,
+    payload.data?.conversation?.referral?.ad_name,
+    payload.data?.conversation?.recent_ad?.ad_title,
+    payload.data?.conversation?.recent_ad?.name,
+    payload.data?.conversation?.recent_ad?.title,
+    payload.data?.message?.ad_title,
+    payload.data?.message?.ad_name,
+    payload.data?.message?.referral?.ad_title,
+    payload.data?.message?.referral?.ad_name,
+    payload.data?.message?.attachments?.[0]?.title,
+    payload.data?.message?.attachments?.[0]?.payload?.title,
+    payload.data?.customer?.recent_ad_title,
+    payload.data?.customer?.ad_name,
+    payload.data?.customer?.ad_title,
+    payload.data?.customer?.extra_infor?.ad_name,
+    payload.data?.customer?.extra_infor?.ad_title,
+    payload.data?.customer?.extra_infor?.ad,
+    payload.data?.customer?.ads_context_data?.ad_title,
+    payload.data?.customer?.referral?.ad_title,
+    payload.customer?.recent_ad_title,
+    payload.customer?.ad_name,
+    payload.customer?.ad_title,
+    payload.customer?.extra_infor?.ad_name,
+    payload.customer?.extra_infor?.ad_title,
     payload.post?.name,
     payload.post?.title,
     payload.post?.message,
@@ -526,30 +560,41 @@ function extractAdSource(payload) {
   ];
 
   for (const c of candidates) {
-    if (c && typeof c === 'string' && c.trim()) return c.trim();
+    if (c && typeof c === 'string' && c.trim() && !/^[-0-9,\s_]+$/.test(c.trim())) {
+      return c.trim();
+    }
   }
 
-  // 2. Facebook Messenger Webhook structure (entry[0].messaging[0].referral)
+  // 2. Facebook Messenger Webhook structure (entry[0].messaging[0].referral or changes)
   if (Array.isArray(payload.entry)) {
     for (const e of payload.entry) {
       if (Array.isArray(e.messaging)) {
         for (const m of e.messaging) {
           const mRef = m.referral?.ads_context_data?.ad_title || m.referral?.ad_title || m.referral?.ad_name || m.referral?.ref || '';
-          if (mRef && typeof mRef === 'string' && mRef.trim()) return mRef.trim();
+          if (mRef && typeof mRef === 'string' && mRef.trim() && !/^[-0-9,\s_]+$/.test(mRef.trim())) return mRef.trim();
+        }
+      }
+      if (Array.isArray(e.changes)) {
+        for (const ch of e.changes) {
+          const chRef = ch.value?.referral?.ad_title || ch.value?.referral?.ads_context_data?.ad_title || ch.value?.ad_name || ch.value?.ad_title || '';
+          if (chRef && typeof chRef === 'string' && chRef.trim() && !/^[-0-9,\s_]+$/.test(chRef.trim())) return chRef.trim();
         }
       }
     }
   }
 
-  // 3. Fallback: Deep recursive search for keys like ad_title, ad_name, ads_context_data
+  // 3. Deep recursive search for any property named ad_title, ad_name, campaign_name, etc.
   let foundAd = '';
   function deepSearch(obj, depth = 0) {
-    if (!obj || depth > 5 || foundAd) return;
+    if (!obj || depth > 6 || foundAd) return;
     if (typeof obj === 'object') {
       for (const [k, v] of Object.entries(obj)) {
         if (typeof v === 'string' && v.trim()) {
           const lk = k.toLowerCase();
-          if (lk === 'ad_title' || lk === 'ad_name' || lk === 'adtitle' || lk === 'adname' || lk === 'campaign_name') {
+          if (
+            (lk === 'ad_title' || lk === 'ad_name' || lk === 'adtitle' || lk === 'adname' || lk === 'campaign_name' || lk === 'campaign_title' || lk === 'source_ad_name' || lk === 'ad_headline') &&
+            !/^[-0-9,\s_]+$/.test(v.trim())
+          ) {
             foundAd = v.trim();
             return;
           }
@@ -562,9 +607,15 @@ function extractAdSource(payload) {
   deepSearch(payload);
   if (foundAd) return foundAd;
 
-  // 4. Ad ID fallback if name is not available
-  const adId = payload.referral?.ad_id || payload.data?.referral?.ad_id || payload.ad_id || '';
-  if (adId) return `Ad ID: ${adId}`;
+  // 4. Ad ID fallback if ad title/name is not found
+  const adId = payload.referral?.ad_id || 
+               payload.referral?.ads_context_data?.ad_id ||
+               payload.data?.referral?.ad_id || 
+               payload.data?.conversation?.ad_id ||
+               payload.data?.customer?.ad_id ||
+               payload.data?.ad_id || 
+               payload.ad_id || '';
+  if (adId && String(adId).trim()) return `Ad ID: ${String(adId).trim()}`;
 
   return '';
 }
@@ -1360,6 +1411,7 @@ module.exports = async (req, res) => {
         date,
         time,
         finalSource,
+        adSource,
         customerName,
         `'${validPhone}`,
         truck,

@@ -255,7 +255,38 @@ async function runAllTests() {
     console.log('✅ Test 11 Passed: Custom channel sources dynamic sync & persistence');
   }
 
-  console.log('\n🎉 ALL 11 TESTS PASSED SUCCESSFULLY! The codebase is robust, clean, and ready.\n');
+  // Test 12: Ad Title Extraction from Nested Conversation Webhook
+  {
+    const adWebhookPayload = {
+      data: {
+        conversation: {
+          id: 'conv_ad_test_123',
+          ad_title: '[ AI EXPERT ADS ] - รถตัด และ คลิปแรกเจ...',
+          recent_ad: {
+            ad_title: '[ AI EXPERT ADS ] - รถตัด และ คลิปแรกเจ...'
+          }
+        },
+        message: {
+          text: 'สนใจสอบถามราคาครับ เบอร์โทร 0612833830',
+          from: {
+            name: 'Phichit Tepchomphoo'
+          }
+        }
+      }
+    };
+    const { req, res, resData } = createMockReqRes({
+      method: 'POST',
+      body: adWebhookPayload
+    });
+    await pancakeHandler(req, res);
+    assert.strictEqual(resData.statusCode, 200);
+    const addedLead = resData.body.recentLeads?.find(l => l.phone === '0612833830');
+    assert.ok(addedLead, 'Lead with phone 0612833830 must be processed');
+    assert.strictEqual(addedLead.ad, '[ AI EXPERT ADS ] - รถตัด และ คลิปแรกเจ...', 'Ad title must be accurately extracted from conversation');
+    console.log('✅ Test 12 Passed: Ad title extracted accurately from conversation payload');
+  }
+
+  console.log('\n🎉 ALL 12 TESTS PASSED SUCCESSFULLY! The codebase is robust, clean, and ready.\n');
 }
 
 runAllTests().catch((err) => {
