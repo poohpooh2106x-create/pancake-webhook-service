@@ -6,11 +6,155 @@ const { google } = require('googleapis');
 const https = require('https');
 
 // Dedicated Cloud Storage ID for Multi-Device Global Sync
-const APP_VERSION = '2026.08.26.1';
+const APP_VERSION = '2026.08.26.2';
 const CLOUD_OBJECT_ID = 'ff8081819ff5b11001a027ca21547381';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 
 const DEFAULT_MASTER_LEADS = [
+  {
+    id: "lead_20260826_084901_0612833830",
+    date: "26/08/2026",
+    time: "8:49:01",
+    name: "Phichit Tepchomphoo",
+    phone: "0612833830",
+    source: "FB เคพีศรีราชา",
+    truck: "",
+    sales: "",
+    ad: "[ AI EXPERT ADS ] - รถตัด และ",
+    report: ""
+  },
+  {
+    id: "lead_20260825_163233_0832420639",
+    date: "25/08/2026",
+    time: "16:32:33",
+    name: "Jirapan Thongsamrit",
+    phone: "0832420639",
+    source: "FB เคพีศรีราชา",
+    truck: "หาง",
+    sales: "ส้ม",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_20260825_162700_0632394248",
+    date: "25/08/2026",
+    time: "16:27:00",
+    name: "ปกรณ์",
+    phone: "0632394248",
+    source: "Marketplace",
+    truck: "เครน",
+    sales: "ปุ๊ก",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_20260825_155252_0879462785",
+    date: "25/08/2026",
+    time: "15:52:52",
+    name: "จิรชญา จันทร์สุรินทร์",
+    phone: "0879462785",
+    source: "FB เคพีศรีราชา",
+    truck: "เครน",
+    sales: "เกด",
+    ad: "",
+    report: "ส่งเสนอราคาใบปิดดูลูกค้าคะ"
+  },
+  {
+    id: "lead_20260825_153741_0615163625",
+    date: "25/08/2026",
+    time: "15:37:41",
+    name: "Nok Raungchai",
+    phone: "0615163625",
+    source: "FB เคพีศรีราชา",
+    truck: "เครน",
+    sales: "เกด",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_20260825_152454_0992574678",
+    date: "25/08/2026",
+    time: "15:24:54",
+    name: "เอกพล ชุมทองจิตร",
+    phone: "0992574678",
+    source: "FB เคพีศรีราชา",
+    truck: "โดยสาร",
+    sales: "เกด",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_20260825_143347_0807562789",
+    date: "25/08/2026",
+    time: "14:33:47",
+    name: "ปรีชา ดารช",
+    phone: "0807562789",
+    source: "FB เคพีศรีราชา",
+    truck: "ถังน้ำขี้",
+    sales: "ท็อป",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_20260825_143007_0654642972",
+    date: "25/08/2026",
+    time: "14:30:07",
+    name: "พำรุต พำรี เดอร์ลอย",
+    phone: "0654642972",
+    source: "FB เคพีศรีราชา",
+    truck: "รถน้ำ",
+    sales: "จิ๊บ",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_20260825_141924_0959847717",
+    date: "25/08/2026",
+    time: "14:19:24",
+    name: "ประเสริฐ ณ.บุรีรัมย์",
+    phone: "0959847717",
+    source: "FB เคพีศรีราชา",
+    truck: "ตู้10",
+    sales: "ส้ม",
+    ad: "",
+    report: "รถคันแรก วิ่งผลดาวน์200,000ทักหาส่งรูปและรายละเอียดเรียบร้อยครับกรุณาติดต่อลูกค้าทันทีครับ"
+  },
+  {
+    id: "lead_20260825_140021_0980671323",
+    date: "25/08/2026",
+    time: "14:00:21",
+    name: "Bank'k Suwannatep",
+    phone: "0980671323",
+    source: "FB เคพีศรีราชา",
+    truck: "คอก",
+    sales: "วุธ",
+    ad: "",
+    report: ""
+  },
+  {
+    id: "lead_20260825_123512_0807242982",
+    date: "25/08/2026",
+    time: "12:35:12",
+    name: "Amrat Boonkong",
+    phone: "0807242982",
+    source: "FB เคพีศรีราชา",
+    truck: "",
+    sales: "เกด",
+    ad: "",
+    report: "ลูกค้าหารถ 10 ล้อหัวลากที่มีเครน 5-8 ตัน ใช้วิ่ง 380/400 แรง ค่ะ"
+  },
+  {
+    id: "lead_20260825_111009_0805425918",
+    date: "25/08/2026",
+    time: "11:10:09",
+    name: "Viroj Bussaplay",
+    phone: "0805425918",
+    source: "FB เคพีศรีราชา",
+    truck: "ตู้10",
+    sales: "เกด",
+    ad: "",
+    report: ""
+  },
   {
     id: "lead_20260825_083635_0610098596",
     date: "25/08/2026",
@@ -24,71 +168,71 @@ const DEFAULT_MASTER_LEADS = [
     report: ""
   },
   {
-    id: "eb62b62f-c641-4cfe-8505-c77f7a4285b6",
+    id: "lead_20260824_204324_0642723396",
     date: "24/08/2026",
     time: "20:43:24",
     name: "พงษ์นนท์ นันทพันธ์",
     phone: "0642723396",
     source: "FB เคพีศรีราชา",
-    truck: "",
-    sales: "",
+    truck: "ตู้10",
+    sales: "เกด",
     ad: "",
     report: ""
   },
   {
-    id: "20c55909-cba2-4496-adac-eb2cbb50ac1e",
+    id: "lead_20260824_180651_0819804209",
     date: "24/08/2026",
     time: "18:06:51",
     name: "Kheng Sa-uenram",
     phone: "0819804209",
     source: "FB เคพีศรีราชา",
-    truck: "",
-    sales: "",
+    truck: "ตู้10",
+    sales: "เกด",
     ad: "",
     report: ""
   },
   {
-    id: "lead_20260824_155459_0985176747",
+    id: "lead_20260824_155459_0986176747",
     date: "24/08/2026",
     time: "15:54:59",
     name: "Nay Win",
-    phone: "0985176747",
+    phone: "0986176747",
     source: "Marketplace",
     truck: "โดยสาร",
-    sales: "จิ๊บ",
+    sales: "ปุ๊ก",
     ad: "",
     report: ""
   },
   {
-    id: "lead_20260824_154154_0959509599",
+    id: "lead_20260824_154154_0958905989",
     date: "24/08/2026",
     time: "15:41:54",
     name: "Anurak",
-    phone: "0959509599",
+    phone: "0958905989",
     source: "Marketplace",
     truck: "โดยสาร",
     sales: "เฟิร์น",
     ad: "",
-    report: "ติดต่อ 16:48 น. คุยรายละเอียดเรื่องรถ ลูกค้าสนใจเป็น 4 ล้อรับไปค่ะอยากได้เป็นแบบลอกแลกมีกำลังประเมินราคาให้อยู่ครับ"
+    report: "ติดต่อ 16.48 น. คุยรายละเอียดเรื่องรถ ลูกค้าสนใจเป็น 4 ล้อจัมโบ้อยากได้เป็นแบบคอกตอนนี้กำลังหารถอยู่"
   },
   {
-    id: "lead_20260824_141015_0928875644",
+    id: "lead_20260824_141015_0928875844",
     date: "24/08/2026",
     time: "14:10:15",
-    name: "สหัสเดช เจริญลาภ",
-    phone: "0928875644",
+    name: "อภิเชษฐ์ เจริญลาภ",
+    phone: "0928875844",
     source: "FB เคพีศรีราชา",
     truck: "หัวลาก",
     sales: "วุธ",
     ad: "",
-    report: "ซื้อ เป็นรถคันแรก อาชีพ ไม่ค่อยเข้าเงื่อนไข อยู่ ต่างจังหวัด สอบถามข้อมูลไว้ จะโทรมาหาใหม่ ถ้า ปรึกษากับแฟนแล้ว"
+    report: "ชื่อ เปียกครับแตก อาชีพ ไม่ค่อยเข้าเงื่อนไข อยู่ ต่างจังหวัด สอบถามข้อมูลไว้ จะโทรมาหาใหม่ ถ้า ปรึกษากับแฟนแล้ว"
   },
   {
-    id: "lead_20260824_135838_0863824419",
+    id: "lead_20260824_135838_0868924419",
     date: "24/08/2026",
     time: "13:58:38",
-    name: "สุวิทย์ แหลมสัมฤทธิ์",
-    phone: "0863824419",
+    name: "สุวิทย์ เหมนเสถียรย์",
+    phone: "0868924419",
     source: "FB เคพีศรีราชา",
     truck: "ตู้10",
     sales: "เฟิร์น",
@@ -105,22 +249,22 @@ const DEFAULT_MASTER_LEADS = [
     truck: "ตู้10",
     sales: "จิ๊บ",
     ad: "",
-    report: "ทดสอบการอัปเดตลงชีต"
+    report: ""
   },
   {
     id: "lead_20260824_111530_0930189287",
     date: "24/08/2026",
     time: "11:15:30",
-    name: "chili(เมร์)",
+    name: "chili(มะขี)",
     phone: "0930189287",
     source: "FB เคพีศรีราชา",
     truck: "โดยสาร",
     sales: "ปุ๊ก",
     ad: "",
-    report: "ลูกค้าต้องการ รถสองแถว ราคา 3-4 แสน ซื้อเงินสด เสนอราคา หกส้อเกษตรมีหลังคาไปแล้ว จะเสนอ เจ้านาย ดูครับ"
+    report: "ลูกค้าต้องการ รถสองแถว ราคา 3-4 แสน ซื้อเงินสด เสนอราคา หกล้อถอยหลังส่งคาไปแล้ว รอเสนอสองแถวเพิ่ม"
   },
   {
-    id: "570f8dab-320b-4488-8fa0-1bdd5bfcf473",
+    id: "lead_20260824_101713_0963577542",
     date: "24/08/2026",
     time: "10:17:13",
     name: "Theeraphat Nuhoung",
@@ -128,15 +272,15 @@ const DEFAULT_MASTER_LEADS = [
     source: "FB เคพีศรีราชา",
     truck: "ตู้10",
     sales: "เฟิร์น",
-    ad: "[ AI EXPERT ADS ] - รถตัด และ คลิปแรกเจ...",
-    report: "โทรติดต่อแล้ว ลูกค้าสนใจเข้ามาดูวันเสาร์"
+    ad: "[ AI EXPERT ADS ] - รถตัด และ",
+    report: "โทรติดต่อแล้ว ลูกค้าสนใจเข้ามาดูรถวันเสาร์"
   },
   {
-    id: "3e5ee0d6-1b4d-4be0-80a5-ae88ba46f731",
+    id: "lead_20260824_100153_0653169838",
     date: "24/08/2026",
     time: "10:01:53",
     name: "ศุภรัตน์ นาคพงศ์",
-    phone: "0653189838",
+    phone: "0653169838",
     source: "FB เคพีศรีราชา",
     truck: "ตู้10",
     sales: "เฟิร์น",
@@ -144,7 +288,7 @@ const DEFAULT_MASTER_LEADS = [
     report: ""
   },
   {
-    id: "b4c2b9f3-8f0c-43f1-b851-4043b2f5ee66",
+    id: "lead_20260824_092504_0828758814",
     date: "24/08/2026",
     time: "09:25:04",
     name: "Ome Boonyai",
@@ -156,22 +300,22 @@ const DEFAULT_MASTER_LEADS = [
     report: ""
   },
   {
-    id: "6e26b158-b6ec-4581-9b16-aa971cbfb9b3",
+    id: "lead_20260824_091109_0850271577",
     date: "24/08/2026",
     time: "09:11:09",
-    name: "สามารถ ศรีนามล",
-    phone: "0650271577",
+    name: "สายชล ศรีงามขำ",
+    phone: "0850271577",
     source: "FB เคพีศรีราชา",
     truck: "คอก",
-    sales: "เกด",
+    sales: "วุธ",
     ad: "",
     report: ""
   },
   {
-    id: "277e92da-19ce-4cb0-a54f-56bb4bf6487e",
+    id: "lead_20260822_114927_0997316431",
     date: "22/08/2026",
     time: "11:49:27",
-    name: "ประกายฟ้า สานนอก",
+    name: "ประภาษิต สานนอก",
     phone: "0997316431",
     source: "FB เคพีศรีราชา",
     truck: "หัวลาก",
@@ -180,7 +324,7 @@ const DEFAULT_MASTER_LEADS = [
     report: ""
   },
   {
-    id: "f833b3ea-7222-4aee-bda0-8797f7faea4b",
+    id: "lead_20260822_114915_0988918611",
     date: "22/08/2026",
     time: "11:49:15",
     name: "ชีวิตคือ การเดินทาง",
@@ -192,14 +336,14 @@ const DEFAULT_MASTER_LEADS = [
     report: ""
   },
   {
-    id: "a75ba5ba-fe02-4ec4-9df2-50ea04153924",
+    id: "lead_20260822_114419_0961917277",
     date: "22/08/2026",
     time: "11:44:19",
     name: "Supattana Wongkom",
     phone: "0961917277",
     source: "FB เคพีศรีราชา",
     truck: "เครน",
-    sales: "ม่า",
+    sales: "เกด",
     ad: "",
     report: ""
   },
@@ -207,7 +351,7 @@ const DEFAULT_MASTER_LEADS = [
     id: "lead_20260822_114825_0997316432",
     date: "22/08/2026",
     time: "11:48:25",
-    name: "ประกายฟ้า สานนอก",
+    name: "ประภาษิต สานนอก",
     phone: "0997316432",
     source: "FB เคพีศรีราชา",
     truck: "หัวลาก",
@@ -216,10 +360,10 @@ const DEFAULT_MASTER_LEADS = [
     report: ""
   },
   {
-    id: "d9e830e0-31fe-4fa2-b258-7ca8c919a05b",
+    id: "lead_20260822_162140_0897402202",
     date: "22/08/2026",
     time: "16:21:40",
-    name: "ณัฐพงษ์ บุญวงศ์",
+    name: "ณัฐพงษ์ บุญวงค์",
     phone: "0897402202",
     source: "FB เคพีศรีราชา",
     truck: "หัวลาก",
@@ -228,7 +372,7 @@ const DEFAULT_MASTER_LEADS = [
     report: ""
   },
   {
-    id: "e578c7ba-1779-450f-aa48-6a56ec9419fb",
+    id: "lead_20260822_162118_0865401249",
     date: "22/08/2026",
     time: "16:21:18",
     name: "นาย อำนวยชัย",
@@ -240,7 +384,7 @@ const DEFAULT_MASTER_LEADS = [
     report: ""
   },
   {
-    id: "08c9d4ca-9cfa-4ebf-8182-557343e8bb24",
+    id: "lead_20260822_160248_0817251742",
     date: "22/08/2026",
     time: "16:02:48",
     name: "Sawai Sinoun",
@@ -255,7 +399,7 @@ const DEFAULT_MASTER_LEADS = [
 
 // Local Memory Cache (Loaded dynamically from Cloud Database via fetchCloudData)
 let memoryLeads = [...DEFAULT_MASTER_LEADS];
-let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'เครน', 'คอก', 'โดยสาร', 'อื่นๆ'];
+let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'เครน', 'โดยสาร', 'คอก', 'รถน้ำ', 'ถังน้ำขี้', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
 let memoryChannels = ['FB เคพีศรีราชา', 'TikTok', 'LOA เคพี', 'FB เฮียตั้มรถติด', 'Marketplace', 'อื่นๆ'];
 let memoryDeletedIds = [];
 let webhookLogs = [];
@@ -401,9 +545,13 @@ function detectTruckType(text) {
   if (t.includes('หัวลาก') || t.includes('ลาก')) return 'หัวลาก';
   if (t.includes('ตู้') || t.includes('10 บาน') || t.includes('ตู้10')) return 'ตู้10';
   if (t.includes('หาง') || t.includes('ก้างปลา') || t.includes('เทรลเลอร์')) return 'หาง';
+  if (t.includes('เครน')) return 'เครน';
+  if (t.includes('โดยสาร')) return 'โดยสาร';
+  if (t.includes('คอก')) return 'คอก';
+  if (t.includes('รถน้ำ')) return 'รถน้ำ';
+  if (t.includes('ถังน้ำขี้')) return 'ถังน้ำขี้';
   if (t.includes('ดั๊ม') || t.includes('ดัมพ์') || t.includes('ดั้มพ์') || t.includes('dump')) return 'ดั๊ม';
   if (t.includes('6 ล้อ') || t.includes('หกล้อ') || t.includes('6ล้อ')) return '6 ล้อ';
-  if (t.includes('เครน')) return 'เครน';
   return '';
 }
 

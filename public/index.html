@@ -638,7 +638,7 @@
         <span style="color: #475569;">|</span>
         <span id="lastSyncTimeText">🟢 ซิงค์ล่าสุด: กำลังโหลด...</span>
         <span style="color: #475569;">|</span>
-        <span id="appVersionBadge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.26.1</span>
+        <span id="appVersionBadge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.26.2</span>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span id="saveIndicator" style="color: #34d399; font-size: 11px; transition: opacity 0.3s; opacity: 0.8;"></span>
@@ -921,6 +921,7 @@
           <option value="ม่า">ม่า</option>
           <option value="ปุ๊ก">ปุ๊ก</option>
           <option value="เฟิร์น">เฟิร์น</option>
+          <option value="ส้ม">ส้ม</option>
         </select>
       </div>
 
@@ -1044,7 +1045,7 @@
 
   <script>
 
-    // 8 Sales Team Members
+    // 9 Sales Team Members
     const SALES_TEAM = [
       { name: 'วุธ', badgeClass: 'badge-wuth' },
       { name: 'อั๋น', badgeClass: 'badge-lin' },
@@ -1053,7 +1054,8 @@
       { name: 'เกด', badgeClass: 'badge-ked' },
       { name: 'ม่า', badgeClass: 'badge-ma' },
       { name: 'ปุ๊ก', badgeClass: 'badge-pook' },
-      { name: 'เฟิร์น', badgeClass: 'badge-fern' }
+      { name: 'เฟิร์น', badgeClass: 'badge-fern' },
+      { name: 'ส้ม', badgeClass: 'badge-som' }
     ];
 
     function sanitizeSalesName(name) {
@@ -1064,7 +1066,7 @@
     }
 
     // TRUCK TYPES (Customizable & Bulletproof Persistence)
-    const DEFAULT_TRUCKS = ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
+    const DEFAULT_TRUCKS = ['หัวลาก', 'ตู้10', 'หาง', 'เครน', 'โดยสาร', 'คอก', 'รถน้ำ', 'ถังน้ำขี้', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
     const TRUCKS_STORAGE_KEY = 'pancake_truck_types_v5';
     let truckTypes = [...DEFAULT_TRUCKS];
 
@@ -1360,7 +1362,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.08.26.1';
+    const APP_VERSION = '2026.08.26.2';
     let lastSyncTimestamp = 0;
     const DEFAULT_ADMIN_TOKEN = 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
     let currentUserRole = 'admin'; // 'admin' | 'sales'
@@ -1700,7 +1702,7 @@
             } catch(e) {}
           }
 
-          // Authoritative Cloud Leads: Server state is the Single Source of Truth
+          // Authoritative Cloud Leads: Merge with local leads so NO LEAD is EVER DROPPED!
           if (Array.isArray(data.leads)) {
             const serverLeads = data.leads
               .filter(l => l && l.phone && !isLeadBlacklisted(l, localDeletedIds))
@@ -1713,7 +1715,30 @@
                 report: l.report !== undefined ? String(l.report) : ''
               }));
 
-            leads = sortLeadsByDate(serverLeads);
+            const masterMap = new Map();
+            leads.forEach(localLead => {
+              const key = localLead.phone || localLead.id;
+              if (key && !isLeadBlacklisted(localLead, localDeletedIds)) {
+                masterMap.set(key, localLead);
+              }
+            });
+            serverLeads.forEach(serverLead => {
+              const key = serverLead.phone || serverLead.id;
+              if (key && !isLeadBlacklisted(serverLead, localDeletedIds)) {
+                const local = masterMap.get(key) || {};
+                masterMap.set(key, {
+                  ...local,
+                  ...serverLead,
+                  source: sanitizeChannelName(serverLead.source || local.source),
+                  truck: serverLead.truck || local.truck || '',
+                  sales: sanitizeSalesName(serverLead.sales || local.sales),
+                  ad: serverLead.ad || local.ad || '',
+                  report: serverLead.report !== undefined ? String(serverLead.report) : (local.report || '')
+                });
+              }
+            });
+
+            leads = sortLeadsByDate(Array.from(masterMap.values()));
             scannedMessageCount = leads.length;
             cleanseAllLocalStorages(localDeletedIds);
             saveState(false); // Cache locally without loop to server
@@ -2836,7 +2861,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
           }
         }
 
-        // 2. Sync Leads: Cloud Database is the Single Source of Truth!
+        // 2. Sync Leads: Non-destructive merge so no lead is ever lost!
         if (Array.isArray(data.leads)) {
           const cleanServerLeads = data.leads
             .filter(sl => sl && sl.phone && !isLeadBlacklisted(sl, localDeletedIds))
@@ -2849,7 +2874,30 @@ ${adSection}━━━━━━━━━━━━━━━━━━
               report: sl.report !== undefined ? String(sl.report) : ''
             }));
 
-          const sortedServer = sortLeadsByDate(cleanServerLeads);
+          const masterMap = new Map();
+          leads.forEach(localLead => {
+            const key = localLead.phone || localLead.id;
+            if (key && !isLeadBlacklisted(localLead, localDeletedIds)) {
+              masterMap.set(key, localLead);
+            }
+          });
+          cleanServerLeads.forEach(serverLead => {
+            const key = serverLead.phone || serverLead.id;
+            if (key && !isLeadBlacklisted(serverLead, localDeletedIds)) {
+              const local = masterMap.get(key) || {};
+              masterMap.set(key, {
+                ...local,
+                ...serverLead,
+                source: sanitizeChannelName(serverLead.source || local.source),
+                truck: serverLead.truck || local.truck || '',
+                sales: sanitizeSalesName(serverLead.sales || local.sales),
+                ad: serverLead.ad || local.ad || '',
+                report: serverLead.report !== undefined ? String(serverLead.report) : (local.report || '')
+              });
+            }
+          });
+
+          const sortedServer = sortLeadsByDate(Array.from(masterMap.values()));
           
           // Check if data changed compared to current local state
           const currentJson = JSON.stringify(leads.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, a: l.ad, src: l.source, d: l.date, tm: l.time })));
