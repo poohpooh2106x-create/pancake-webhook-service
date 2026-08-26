@@ -47,15 +47,18 @@ function createMockReqRes({ method = 'GET', url = '/api/webhooks/pancake', heade
 async function runAllTests() {
   console.log('🧪 Starting PanCake Webhook Handler Test Suite...\n');
 
-  // Test 1: GET Request (System Health Check & Cloud Data)
+  // Test 1: GET Request (System Health Check, App Version & Cloud Data)
   {
     const { req, res, resData } = createMockReqRes({ method: 'GET' });
     await pancakeHandler(req, res);
     assert.strictEqual(resData.statusCode, 200, 'GET should return 200');
     assert.strictEqual(resData.body.status, 'online', 'Status should be online');
+    assert.strictEqual(resData.body.appVersion, '2026.08.26.1', 'App version must match');
+    assert.ok(typeof resData.body.serverTimestamp === 'number', 'Server timestamp must be present');
+    assert.ok(resData.headers['cache-control']?.includes('no-cache'), 'Cache-Control header must be set to no-cache');
     assert.ok(Array.isArray(resData.body.leads), 'Leads should be an array');
     assert.ok(Array.isArray(resData.body.truckTypes), 'Truck types should be an array');
-    console.log('✅ Test 1 Passed: GET Health check & initial cloud state');
+    console.log('✅ Test 1 Passed: GET Health check, appVersion & initial cloud state');
   }
 
   // Test 2: Admin Authentication Login

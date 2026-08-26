@@ -6,6 +6,7 @@ const { google } = require('googleapis');
 const https = require('https');
 
 // Dedicated Cloud Storage ID for Multi-Device Global Sync
+const APP_VERSION = '2026.08.26.1';
 const CLOUD_OBJECT_ID = 'ff8081819ff5b11001a027ca21547381';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 
@@ -951,6 +952,9 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Pancake-Secret, Authorization');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).json({ message: 'OK' });
@@ -1055,12 +1059,16 @@ module.exports = async (req, res) => {
     }
     memoryLeads = sortLeadsByDate(memoryLeads);
 
+    const { date: thaiDate, time: thaiTime } = getThaiDateTime();
+
     return res.status(200).json({
       status: 'online',
       platform: 'vercel',
+      appVersion: APP_VERSION,
+      serverTimestamp: Date.now(),
+      serverTime: `${thaiDate} ${thaiTime}`,
       role: effectiveRole,
       endpoint: '/api/webhooks/pancake',
-      serverTime: new Date().toISOString(),
       leads: memoryLeads,
       recentLeads: memoryLeads.slice(0, 50),
       truckTypes: memoryTruckTypes,

@@ -630,6 +630,24 @@
 
     </header>
 
+    <!-- REAL-TIME MULTI-DEVICE CLOUD SYNC STATUS BAR -->
+    <div class="sync-status-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 7px 14px; margin-bottom: 16px; font-size: 12px; color: #94a3b8; backdrop-filter: blur(8px);">
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981;"></span>
+        <span>สถานะ: <strong style="color: #38bdf8;">Cloud Sync เรียลไทม์ (ทุกอุปกรณ์)</strong></span>
+        <span style="color: #475569;">|</span>
+        <span id="lastSyncTimeText">🟢 ซิงค์ล่าสุด: กำลังโหลด...</span>
+        <span style="color: #475569;">|</span>
+        <span id="appVersionBadge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.26.1</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span id="saveIndicator" style="color: #34d399; font-size: 11px; transition: opacity 0.3s; opacity: 0.8;"></span>
+        <button onclick="refreshLeads(true)" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s;" onmouseover="this.style.background='rgba(56,189,248,0.25)'" onmouseout="this.style.background='rgba(56,189,248,0.15)'">
+          🔄 รีเฟรชทันที
+        </button>
+      </div>
+    </div>
+
     <!-- METRICS (4 CARDS) -->
     <section class="metrics-grid">
       <div class="metric-card card-leads">
@@ -1342,12 +1360,27 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
+    const APP_VERSION = '2026.08.26.1';
+    let lastSyncTimestamp = 0;
     const DEFAULT_ADMIN_TOKEN = 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
     let currentUserRole = 'admin'; // 'admin' | 'sales'
     let isPromptingLogin = false;
     let currentLogTab = 'webhook'; // 'webhook' | 'audit'
     let latestAuditLogs = [];
     let pollingTimer = null;
+
+    function updateSyncTimestamp(serverTime, isError = false) {
+      const el = document.getElementById('lastSyncTimeText');
+      if (!el) return;
+      const now = new Date().toLocaleTimeString('th-TH');
+      if (isError) {
+        el.innerHTML = `⚠️ ขัดข้อง (${now})`;
+        el.style.color = '#f87171';
+      } else {
+        el.innerHTML = `🟢 ซิงค์ล่าสุด: <strong style="color:#f1f5f9;">${now}</strong>`;
+        el.style.color = '#34d399';
+      }
+    }
 
     function getStoredToken() {
       return localStorage.getItem('pancake_auth_token') || DEFAULT_ADMIN_TOKEN;
@@ -1616,76 +1649,43 @@
       }
     }
 
-    // 2. Multi-Layer Non-Destructive Storage Loader with Blacklist Enforcement
+    // 2. Multi-Layer Non-Destructive Storage Loader with Cloud-First Synchronization
     async function initData() {
       loadTruckTypes();
       loadChannelSources();
       await initIndexedDB();
       initCharts();
 
-      showSaveIndicator('กำลังกู้คืนและผสานข้อมูลทั้งหมด... 🔄');
-
-      const masterMap = new Map();
       const localDeletedIds = getLocalBlacklist();
 
-      // Step B: Load primary Master Leads from LocalStorage (preventing stale historical overwrites)
-      const masterItem = localStorage.getItem(MASTER_LEADS_KEY) || localStorage.getItem(BACKUP_LEADS_KEY) || localStorage.getItem('pancake_sales_leads_v3');
+      // Step A: Load local cache immediately for instant UI display
+      const masterItem = localStorage.getItem(MASTER_LEADS_KEY) || localStorage.getItem(BACKUP_LEADS_KEY);
       if (masterItem) {
         try {
           const arr = JSON.parse(masterItem);
-          if (Array.isArray(arr)) {
-            arr.forEach(l => {
-              const key = l.phone || l.id;
-              if (key && !masterMap.has(key) && !isLeadBlacklisted(l, localDeletedIds)) {
-                masterMap.set(key, {
-                  ...l,
-                  source: sanitizeChannelName(l.source),
-                  truck: l.truck || '',
-                  sales: sanitizeSalesName(l.sales),
-                  ad: l.ad || '',
-                  report: l.report !== undefined ? l.report : ''
-                });
-              }
-            });
+          if (Array.isArray(arr) && arr.length > 0) {
+            leads = sortLeadsByDate(arr.filter(l => l && !isLeadBlacklisted(l, localDeletedIds)));
+            scannedMessageCount = leads.length;
+            updateAll();
           }
         } catch(e) {}
       }
 
-      // Step C: If local master is empty, fallback to IndexedDB or legacy keys
-      if (masterMap.size === 0 && db) {
-        try {
-          await new Promise((resolve) => {
-            const tx = db.transaction(DB_STORE, 'readonly');
-            const store = tx.objectStore(DB_STORE);
-            const req = store.get('all_leads');
-            req.onsuccess = () => {
-              if (req.result && Array.isArray(req.result.data)) {
-                req.result.data.forEach(l => {
-                  const key = l.phone || l.id;
-                  if (key && !masterMap.has(key) && !isLeadBlacklisted(l, localDeletedIds)) {
-                    masterMap.set(key, {
-                      ...l,
-                      source: sanitizeChannelName(l.source),
-                      truck: l.truck || '',
-                      sales: sanitizeSalesName(l.sales),
-                      ad: l.ad || '',
-                      report: l.report !== undefined ? l.report : ''
-                    });
-                  }
-                });
-              }
-              resolve();
-            };
-            req.onerror = () => resolve();
-          });
-        } catch(e) {}
-      }
+      showSaveIndicator('กำลังซิงค์ข้อมูลจาก Cloud Server... 🔄');
 
-      // Step D: Fetch and merge with Cloud Database (Authenticated)
+      // Step B: Fetch authoritative Cloud Database state from Server
       try {
-        const res = await fetchWithAuth('/api/webhooks/pancake');
+        const res = await fetchWithAuth(`/api/webhooks/pancake?v=${Date.now()}`);
         if (res && res.ok) {
           const data = await res.json();
+
+          // Check for new app version
+          if (data.appVersion && data.appVersion !== APP_VERSION) {
+            console.log(`🔔 App update detected: server=${data.appVersion}, client=${APP_VERSION}`);
+            showSaveIndicator('🔔 กำลังอัปเดตระบบเวอร์ชันใหม่...');
+            setTimeout(() => { window.location.reload(true); }, 1000);
+            return;
+          }
 
           // Sync server-side deleted blacklist into local blacklist
           if (Array.isArray(data.deletedIds)) {
@@ -1700,73 +1700,52 @@
             } catch(e) {}
           }
 
-          // Purge any blacklisted entries that may have sneaked in
-          for (const [key, l] of masterMap.entries()) {
-            if (isLeadBlacklisted(l, localDeletedIds)) {
-              masterMap.delete(key);
-            }
+          // Authoritative Cloud Leads: Server state is the Single Source of Truth
+          if (Array.isArray(data.leads)) {
+            const serverLeads = data.leads
+              .filter(l => l && l.phone && !isLeadBlacklisted(l, localDeletedIds))
+              .map(l => ({
+                ...l,
+                source: sanitizeChannelName(l.source),
+                truck: l.truck || '',
+                sales: sanitizeSalesName(l.sales),
+                ad: l.ad || '',
+                report: l.report !== undefined ? String(l.report) : ''
+              }));
+
+            leads = sortLeadsByDate(serverLeads);
+            scannedMessageCount = leads.length;
+            cleanseAllLocalStorages(localDeletedIds);
+            saveState(false); // Cache locally without loop to server
+            updateAll();
           }
 
-          if (Array.isArray(data.leads)) {
-            data.leads.forEach(serverLead => {
-              const key = serverLead.phone || serverLead.id;
-              if (key && !isLeadBlacklisted(serverLead, localDeletedIds)) {
-                const serverSales = sanitizeSalesName(serverLead.sales);
-                if (masterMap.has(key)) {
-                  // Merge fields intelligently: Local modifications always win!
-                  const local = masterMap.get(key);
-                  if (!local.sales && serverSales) local.sales = serverSales;
-                  if (!local.truck && serverLead.truck) local.truck = serverLead.truck;
-                  if (!local.ad && serverLead.ad) local.ad = serverLead.ad;
-                  if (local.report === undefined && serverLead.report !== undefined) local.report = serverLead.report;
-                  if (!local.source && serverLead.source) local.source = sanitizeChannelName(serverLead.source);
-                  masterMap.set(key, local);
-                } else {
-                  masterMap.set(key, {
-                    ...serverLead,
-                    source: sanitizeChannelName(serverLead.source),
-                    truck: serverLead.truck || '',
-                    sales: serverSales,
-                    ad: serverLead.ad || '',
-                    report: serverLead.report || ''
-                  });
-                }
-              }
-            });
-          }
           if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
-            if (!localStorage.getItem(TRUCKS_STORAGE_KEY)) {
-              truckTypes = [...data.truckTypes];
-              populateTruckSelectInputs();
-            }
+            truckTypes = [...data.truckTypes];
+            localStorage.setItem(TRUCKS_STORAGE_KEY, JSON.stringify(truckTypes));
+            populateTruckSelectInputs();
+            renderTruckTypesList();
           }
           if (Array.isArray(data.channelSources) && data.channelSources.length > 0) {
-            if (!localStorage.getItem(CHANNELS_STORAGE_KEY)) {
-              channelSources = [...data.channelSources];
-              populateChannelInputs();
-              renderChannelFilterTabs();
-            }
+            channelSources = [...data.channelSources];
+            localStorage.setItem(CHANNELS_STORAGE_KEY, JSON.stringify(channelSources));
+            populateChannelInputs();
+            renderChannelFilterTabs();
           }
-
           if (data.webhookLogs && Array.isArray(data.webhookLogs)) {
-            document.getElementById('logCountBadge').innerText = data.webhookLogs.length;
+            const badge = document.getElementById('logCountBadge');
+            if (badge) badge.innerText = data.webhookLogs.length;
             latestServerLogs = data.webhookLogs;
           }
+
+          updateSyncTimestamp(data.serverTime);
+          showSaveIndicator('ซิงค์ข้อมูล Cloud สำเร็จแล้ว ✅');
+          console.log(`☁️ [CloudSync] initData loaded ${leads.length} leads from Cloud Server at ${new Date().toLocaleTimeString('th-TH')}`);
         }
       } catch(e) {
-        console.warn('Could not fetch cloud data, using local master cache:', e);
+        console.warn('Could not fetch cloud data, using local cache:', e);
+        showSaveIndicator('ใช้งานข้อมูลในเครื่อง (ออฟไลน์) 💾');
       }
-
-      leads = sortLeadsByDate(Array.from(masterMap.values()).filter(l => !isLeadBlacklisted(l, localDeletedIds)));
-      scannedMessageCount = leads.length;
-
-      // Cleanse local storage to permanently remove any old deleted remnants
-      cleanseAllLocalStorages(localDeletedIds);
-
-      // Save complete merged state locally and sync to cloud
-      saveState(true);
-      updateAll();
-      showSaveIndicator('กู้คืนและผสานข้อมูลทั้งหมดเรียบร้อยแล้ว ✅');
     }
 
     // Save permanently to all layers (Master Key, Backup Key, IndexedDB, Cloud Store)
@@ -2794,27 +2773,47 @@ ${adSection}━━━━━━━━━━━━━━━━━━
 
 
     // REAL-TIME AUTO SYNC FROM CLOUD DATABASE (POLLING EVERY 4 SECONDS)
-    async function refreshLeads() {
+    async function refreshLeads(isManual = false) {
       try {
-        const res = await fetchWithAuth('/api/webhooks/pancake');
-        if (!res || !res.ok) return;
+        const res = await fetchWithAuth(`/api/webhooks/pancake?v=${Date.now()}`);
+        if (!res || !res.ok) {
+          updateSyncTimestamp(null, true);
+          return;
+        }
         const data = await res.json();
+
+        // 1. Version Check & Seamless Auto Reload on New Deploy
+        if (data.appVersion && data.appVersion !== APP_VERSION) {
+          console.log(`🔔 New deployment available: server=${data.appVersion}, client=${APP_VERSION}`);
+          showSaveIndicator('🔔 มีการอัปเดตเวอร์ชันใหม่ กำลังรีเฟรช...');
+          setTimeout(() => { window.location.reload(true); }, 1200);
+          return;
+        }
 
         // Update Log Count badge in navbar
         if (data.webhookLogs && Array.isArray(data.webhookLogs)) {
-          document.getElementById('logCountBadge').innerText = data.webhookLogs.length;
+          const badge = document.getElementById('logCountBadge');
+          if (badge) badge.innerText = data.webhookLogs.length;
           latestServerLogs = data.webhookLogs;
         }
 
-        // Sync custom truck types from cloud only for new devices that haven't customized locally
+        // Sync custom truck types & channels from cloud
         if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
-          if (!localStorage.getItem(TRUCKS_STORAGE_KEY) && !localStorage.getItem('pancake_trucks_user_customized')) {
-            const serverTrucks = data.truckTypes;
-            if (JSON.stringify(truckTypes) !== JSON.stringify(serverTrucks)) {
-              truckTypes = [...serverTrucks];
-              populateTruckSelectInputs();
-              renderTruckTypesList();
-            }
+          const serverTrucks = data.truckTypes;
+          if (JSON.stringify(truckTypes) !== JSON.stringify(serverTrucks)) {
+            truckTypes = [...serverTrucks];
+            localStorage.setItem(TRUCKS_STORAGE_KEY, JSON.stringify(truckTypes));
+            populateTruckSelectInputs();
+            renderTruckTypesList();
+          }
+        }
+        if (Array.isArray(data.channelSources) && data.channelSources.length > 0) {
+          const serverChannels = data.channelSources;
+          if (JSON.stringify(channelSources) !== JSON.stringify(serverChannels)) {
+            channelSources = [...serverChannels];
+            localStorage.setItem(CHANNELS_STORAGE_KEY, JSON.stringify(channelSources));
+            populateChannelInputs();
+            renderChannelFilterTabs();
           }
         }
 
@@ -2837,126 +2836,53 @@ ${adSection}━━━━━━━━━━━━━━━━━━
           }
         }
 
-        let hasChanges = false;
-        let needsPushToCloud = false;
+        // 2. Sync Leads: Cloud Database is the Single Source of Truth!
+        if (Array.isArray(data.leads)) {
+          const cleanServerLeads = data.leads
+            .filter(sl => sl && sl.phone && !isLeadBlacklisted(sl, localDeletedIds))
+            .map(sl => ({
+              ...sl,
+              source: sanitizeChannelName(sl.source),
+              truck: sl.truck || '',
+              sales: sanitizeSalesName(sl.sales),
+              ad: sl.ad || '',
+              report: sl.report !== undefined ? String(sl.report) : ''
+            }));
 
-        // Instantly purge any blacklisted leads that were deleted by any device
-        const prevCount = leads.length;
-        leads = leads.filter(l => !isLeadBlacklisted(l, localDeletedIds));
-        if (leads.length !== prevCount) {
-          hasChanges = true;
-          cleanseAllLocalStorages(localDeletedIds);
-        }
+          const sortedServer = sortLeadsByDate(cleanServerLeads);
+          
+          // Check if data changed compared to current local state
+          const currentJson = JSON.stringify(leads.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, a: l.ad, src: l.source, d: l.date, tm: l.time })));
+          const serverJson = JSON.stringify(sortedServer.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, a: l.ad, src: l.source, d: l.date, tm: l.time })));
 
-        // Sync all leads from cloud across all devices with smart merging
-        if (Array.isArray(data.leads) && data.leads.length > 0) {
-          const validServerLeads = data.leads.filter(sl => {
-            if (!sl || !sl.phone) return false;
-            // Ignore test leads or leads explicitly in blacklist
-            if (isLeadBlacklisted(sl, localDeletedIds)) return false;
-            if (sl.phone === '0899999999' || sl.phone === '0891234567' || (sl.name && sl.name.includes('ทดสอบ'))) return false;
-            return true;
-          });
-
-          // If local leads is empty (new device / fresh browser), populate all from cloud!
-          if (leads.length === 0) {
-            leads = validServerLeads.map(l => ({ ...l, sales: sanitizeSalesName(l.sales) })).filter(l => !isLeadBlacklisted(l, localDeletedIds));
-            hasChanges = true;
-          } else {
-            for (const serverLead of validServerLeads) {
-              if (isLeadBlacklisted(serverLead, localDeletedIds)) continue;
-
-              const serverSales = sanitizeSalesName(serverLead.sales);
-              const existingIdx = leads.findIndex(l => (serverLead.id && l.id === serverLead.id) || l.phone === serverLead.phone);
-              if (existingIdx !== -1) {
-                const local = leads[existingIdx];
-                local.sales = sanitizeSalesName(local.sales);
-
-                // 1. Sales Assignment (NEVER overwrite a filled local sales rep with an empty server sales)
-                if (local.sales && !serverSales) {
-                  needsPushToCloud = true; // Local has sales, notify cloud
-                } else if (!local.sales && serverSales) {
-                  local.sales = serverSales;
-                  hasChanges = true;
-                } else if (local.sales && serverSales && local.sales !== serverSales) {
-                  local.sales = serverSales;
-                  hasChanges = true;
-                }
-
-                // 2. Truck Type
-                if (local.truck && !serverLead.truck) {
-                  needsPushToCloud = true;
-                } else if (!local.truck && serverLead.truck) {
-                  local.truck = serverLead.truck;
-                  hasChanges = true;
-                }
-
-                // 3. Channel Source & Ad Name
-                if (serverLead.source && local.source !== serverLead.source && serverLead.source !== 'FB เคพีศรีราชา') {
-                  local.source = serverLead.source;
-                  hasChanges = true;
-                }
-                if (serverLead.ad && local.ad !== serverLead.ad) {
-                  local.ad = serverLead.ad;
-                  hasChanges = true;
-                }
-
-                // 4. Sales Report Note (Do not overwrite with stale server report if local was cleared to "")
-                if (local.report === undefined && serverLead.report) {
-                  local.report = serverLead.report;
-                  hasChanges = true;
-                }
-
-                // 5. Customer Name
-                if (serverLead.name && serverLead.name !== 'ลูกค้า PanCake' && local.name !== serverLead.name) {
-                  local.name = serverLead.name;
-                  hasChanges = true;
-                }
-
-                // 6. Returning Customer Timestamp: Bring to TOP of table
-                if (serverLead.date && serverLead.time && (serverLead.date !== local.date || serverLead.time !== local.time)) {
-                  local.date = serverLead.date;
-                  local.time = serverLead.time;
-                  leads.splice(existingIdx, 1);
-                  leads.unshift(local);
-                  hasChanges = true;
-                }
-              } else {
-                // New lead from PanCake or other device
-                if (!isLeadBlacklisted(serverLead, localDeletedIds)) {
-                  console.log('✨ [Polling New Lead Added]:', serverLead.name, serverLead.phone);
-                  leads.unshift(serverLead);
-                  hasChanges = true;
-                  scannedMessageCount++;
-                } else {
-                  console.log('🚫 [Polling Blocked Blacklisted Lead]:', serverLead.name, serverLead.phone);
-                }
-              }
-            }
-
-            // Check if local has unique new leads not yet present on server
-            for (const localLead of leads) {
-              if (isLeadBlacklisted(localLead, localDeletedIds)) continue;
-              if (!validServerLeads.some(sl => (localLead.id && sl.id === localLead.id) || sl.phone === localLead.phone)) {
-                needsPushToCloud = true;
-                break;
-              }
-            }
-          }
-
-          if (hasChanges) {
-            leads = sortLeadsByDate(leads);
-            saveState(false); // Save locally without echoing back to cloud
+          if (currentJson !== serverJson || leads.length !== sortedServer.length) {
+            leads = sortedServer;
+            scannedMessageCount = leads.length;
+            cleanseAllLocalStorages(localDeletedIds);
+            saveState(false); // Update local cache without echo loop to server
             updateAll();
-          }
-
-          if (needsPushToCloud) {
-            saveState(true); // Persist local assignments to Cloud Database
+            console.log(`☁️ [CloudSync] Real-time sync updated ${leads.length} leads at ${new Date().toLocaleTimeString('th-TH')}`);
           }
         }
 
-      } catch(e) {
-        console.warn('Sync error:', e.message);
+        updateSyncTimestamp(data.serverTime);
+
+        if (isManual) {
+          showSaveIndicator('ซิงค์ข้อมูลล่าสุดสำเร็จ ✅');
+          if (window.Swal) {
+            Swal.fire({
+              toast: true,
+              position: 'top-end',
+              icon: 'success',
+              title: `ซิงค์ข้อมูลล่าสุดแล้ว (${leads.length} เคส)`,
+              timer: 1500,
+              showConfirmButton: false
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('refreshLeads error:', err);
+        updateSyncTimestamp(null, true);
       }
     }
 
