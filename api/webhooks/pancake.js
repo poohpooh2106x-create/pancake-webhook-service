@@ -6,7 +6,7 @@ const { google } = require('googleapis');
 const https = require('https');
 
 // Dedicated Cloud Storage ID for Multi-Device Global Sync
-const APP_VERSION = '2026.08.27.9';
+const APP_VERSION = '2026.08.28.1';
 const CLOUD_OBJECT_ID = 'ff8081819ff5b11001a03c0bbbae2203';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 
