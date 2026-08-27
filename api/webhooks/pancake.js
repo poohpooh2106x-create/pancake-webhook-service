@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.28.5';
+const APP_VERSION = '2026.08.28.6';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1148,6 +1148,7 @@ const AUTH_CONFIGURED = VALID_ADMIN_TOKENS.size > 0;
 if (!AUTH_CONFIGURED) {
   VALID_ADMIN_TOKENS.add('kp_crm_sec_2026');
   VALID_ADMIN_TOKENS.add('kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e');
+  VALID_SALES_TOKENS.add('kp_sales_2026');
   VALID_SALES_TOKENS.add('kp_sales_4a7c8e2b9d1f3068e5b7a2c4d9f103b872e4a9c1d5f8b0e3a6c2d4f8b9e1a3c5');
 }
 
