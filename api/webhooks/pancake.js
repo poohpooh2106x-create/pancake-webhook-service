@@ -1352,16 +1352,18 @@ module.exports = async (req, res) => {
           }
         }
       }
+      let salesSheetTarget = null;
       if (payload?.lead) {
         const target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
         if (target && payload.lead.report !== undefined) {
           target.report = payload.lead.report;
-          await syncToGoogleSheets(target);
+          salesSheetTarget = target;
         } else {
-          await syncToGoogleSheets(payload.lead);
+          salesSheetTarget = payload.lead;
         }
       }
       await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
+      if (salesSheetTarget) { syncToGoogleSheets(salesSheetTarget).catch(() => {}); }
       recordAuditLog(req, clientIp, authUser.role, 200, 'sync_sales_report');
       return res.status(200).json({ success: true, message: 'Sales report updated', role: 'sales', deletedIds: memoryDeletedIds });
     }
@@ -1370,6 +1372,7 @@ module.exports = async (req, res) => {
     if (Array.isArray(payload?.leads)) {
       memoryLeads = payload.leads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
     }
+    let sheetSyncTarget = null;
     if (payload?.lead) {
       const target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
       if (target) {
@@ -1378,13 +1381,16 @@ module.exports = async (req, res) => {
         if (payload.lead.truck !== undefined) target.truck = payload.lead.truck;
         if (payload.lead.date !== undefined) target.date = payload.lead.date;
         if (payload.lead.source !== undefined) target.source = payload.lead.source;
-        await syncToGoogleSheets(target);
+        sheetSyncTarget = target;
       } else {
-        await syncToGoogleSheets(payload.lead);
+        sheetSyncTarget = payload.lead;
       }
     }
     if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) memoryTruckTypes = payload.truckTypes;
+    // Persist the shared cloud state FIRST (critical path for multi-device sync);
+    // Google Sheets is best-effort and must never block or pre-empt the cloud write.
     await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
+    if (sheetSyncTarget) { syncToGoogleSheets(sheetSyncTarget).catch(() => {}); }
 
     recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_admin_state');
     return res.status(200).json({ 
