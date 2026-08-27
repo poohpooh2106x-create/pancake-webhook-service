@@ -11,26 +11,68 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- SweetAlert2 -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script>try{if((localStorage.getItem('pancake_theme')||'light')==='dark')document.documentElement.dataset.theme='dark';}catch(e){}</script>
   <style>
     :root {
       --bg-dark: #f8f9fb;
       --bg-card: #ffffff;
       --bg-card-alt: #f1f3f6;
+      --tile: #f1f3f6;
       --border: #e6e8ec;
       --border-light: #d7dbe1;
       --text: #1a1d24;
+      --text-2: #4b5563;
       --text-muted: #6b7280;
+      --faint: #9aa0ab;
       --primary: #2f5b8f;
       --primary-hover: #274b76;
+      --orange: #2f5b8f;
+      --cyan: #2f5b8f;
       --success: #127a54;
       --warning: #b7791f;
       --danger: #c0392b;
-      --orange: #2f5b8f;
       --purple: #6d28d9;
-      --cyan: #2f5b8f;
-      --tile: #f1f3f6;
-      --faint: #9aa0ab;
+      --soft: #eef1f5;
+      --soft-hover: #e2e6ec;
+      --th-bg: #f4f5f7;
+      --row-hover: #f4f6f8;
+      --pill-bg: #eef1f5;
+      --pill-text: #3b4250;
+      --wash: rgba(20,24,40,0.04);
+      --wash-2: rgba(20,24,40,0.06);
+      --overlay: rgba(20,24,40,0.4);
     }
+    :root[data-theme="dark"] {
+      --bg-dark: #151513;
+      --bg-card: #1e1e1b;
+      --bg-card-alt: #26251f;
+      --tile: #26251f;
+      --border: #302f2b;
+      --border-light: #3b3a34;
+      --text: #eae7df;
+      --text-2: #c3bcae;
+      --text-muted: #9a958a;
+      --faint: #6f6a5f;
+      --primary: #3f74b8;
+      --primary-hover: #5b93d6;
+      --orange: #3f74b8;
+      --cyan: #3f74b8;
+      --success: #4ec48c;
+      --warning: #e0a340;
+      --danger: #e0685a;
+      --purple: #b79bff;
+      --soft: #26251f;
+      --soft-hover: #302f28;
+      --th-bg: #232320;
+      --row-hover: #232320;
+      --pill-bg: #2a2822;
+      --pill-text: #cdbf9c;
+      --wash: rgba(255,255,255,0.05);
+      --wash-2: rgba(255,255,255,0.08);
+      --overlay: rgba(0,0,0,0.6);
+    }
+    :root[data-theme="dark"] .swal2-popup { background: #1e1e1b !important; color: #eae7df !important; }
+    :root[data-theme="dark"] .swal2-title, :root[data-theme="dark"] .swal2-html-container { color: #eae7df !important; }
     * {
       box-sizing: border-box;
       margin: 0;
@@ -67,7 +109,7 @@
     .brand-icon {
       width: 44px;
       height: 44px;
-      background: #2f5b8f;
+      background: var(--primary);
       border-radius: 12px;
       display: flex;
       align-items: center;
@@ -89,7 +131,7 @@
     .badge-extractor {
       background: rgba(16, 185, 129, 0.15);
       border: 1px solid rgba(16, 185, 129, 0.3);
-      color: #127a54;
+      color: var(--success);
       font-size: 11px;
       font-weight: 600;
       padding: 4px 10px;
@@ -105,13 +147,13 @@
       padding: 6px 14px;
       border-radius: 9999px;
       font-size: 12px;
-      color: #2f5b8f;
+      color: var(--primary);
       font-weight: 500;
     }
     .badge-status .dot {
       width: 8px;
       height: 8px;
-      background: #127a54;
+      background: var(--success);
       border-radius: 50%;
     }
     .nav-actions {
@@ -134,44 +176,44 @@
       text-decoration: none;
     }
     .btn-webhook {
-      background: #eef1f5;
+      background: var(--soft);
       border: 1px solid var(--border-light);
-      color: #4b5563;
+      color: var(--text-2);
       font-family: monospace;
     }
     .btn-webhook:hover {
-      background: #e6e8ec;
+      background: var(--border);
       color: var(--text);
     }
     .btn-sim {
-      background: #2f5b8f;
-      color: #ffffff;
-      border: 1px solid #2f5b8f;
+      background: var(--primary);
+      color: var(--bg-card);
+      border: 1px solid var(--primary);
     }
     .btn-sim:hover {
-      background: #274b76;
+      background: var(--primary-hover);
       color: white;
     }
     .btn-add {
-      background: #2f5b8f;
+      background: var(--primary);
       color: white;
     }
     .btn-add:hover {
-      background: #274b76;
+      background: var(--primary-hover);
     }
     .btn-excel {
-      background: #eef1f5;
+      background: var(--soft);
       border: 1px solid var(--border-light);
-      color: #6b7280;
+      color: var(--text-muted);
     }
     .btn-excel:hover {
-      background: #e6e8ec;
+      background: var(--border);
       color: var(--text);
     }
     .btn-trash {
       background: rgba(239, 68, 68, 0.15);
       border: 1px solid rgba(239, 68, 68, 0.3);
-      color: #c0392b;
+      color: var(--danger);
       padding: 8px 10px;
     }
     .btn-trash:hover {
@@ -228,21 +270,21 @@
       justify-content: center;
       font-size: 20px;
     }
-    .card-leads .metric-num { color: #127a54; }
+    .card-leads .metric-num { color: var(--success); }
     .card-leads .metric-sub { color: #10b981; }
-    .card-leads .metric-icon { background: rgba(16, 185, 129, 0.15); color: #127a54; }
+    .card-leads .metric-icon { background: rgba(16, 185, 129, 0.15); color: var(--success); }
 
-    .card-assigned .metric-num { color: #2f5b8f; }
-    .card-assigned .metric-sub { color: #2f5b8f; }
-    .card-assigned .metric-icon { background: rgba(59, 130, 246, 0.15); color: #2f5b8f; }
+    .card-assigned .metric-num { color: var(--primary); }
+    .card-assigned .metric-sub { color: var(--primary); }
+    .card-assigned .metric-icon { background: rgba(59, 130, 246, 0.15); color: var(--primary); }
 
-    .card-pending .metric-num { color: #b7791f; }
-    .card-pending .metric-sub { color: #b7791f; }
-    .card-pending .metric-icon { background: rgba(245, 158, 11, 0.15); color: #b7791f; }
+    .card-pending .metric-num { color: var(--warning); }
+    .card-pending .metric-sub { color: var(--warning); }
+    .card-pending .metric-icon { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
 
-    .card-scanned .metric-num { color: #6d28d9; }
-    .card-scanned .metric-sub { color: #6d28d9; }
-    .card-scanned .metric-icon { background: rgba(168, 85, 247, 0.15); color: #6d28d9; }
+    .card-scanned .metric-num { color: var(--purple); }
+    .card-scanned .metric-sub { color: var(--purple); }
+    .card-scanned .metric-icon { background: rgba(168, 85, 247, 0.15); color: var(--purple); }
 
     /* MIDDLE SECTION */
     .middle-grid {
@@ -265,7 +307,7 @@
     .chart-title {
       font-size: 14px;
       font-weight: 600;
-      color: #1a1d24;
+      color: var(--text);
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -292,7 +334,7 @@
       gap: 8px;
     }
     .sales-item {
-      background: rgba(20,24,40,0.03);
+      background: var(--wash);
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 8px 12px;
@@ -307,8 +349,8 @@
       border-radius: 999px;
       font-size: 12px;
       font-weight: 500;
-      color: #3b4250;
-      background: #eef1f5;
+      color: var(--pill-text);
+      background: var(--soft);
     }
     .sales-badge::before {
       content: '';
@@ -321,17 +363,17 @@
     .sales-count {
       font-size: 13px;
       font-weight: 500;
-      color: #6b7280;
+      color: var(--text-muted);
     }
 
     /* Per-rep dot colour */
-    .badge-wuth::before { background: #2f5b8f; }
+    .badge-wuth::before { background: var(--primary); }
     .badge-lin::before  { background: #b45309; }
     .badge-top::before  { background: #64748b; }
-    .badge-jib::before  { background: #127a54; }
+    .badge-jib::before  { background: var(--success); }
     .badge-ked::before  { background: #c98a2e; }
     .badge-ma::before   { background: #7c3aed; }
-    .badge-pook::before { background: #c0392b; }
+    .badge-pook::before { background: var(--danger); }
     .badge-fern::before { background: #0d9488; }
 
     /* TABLE SECTION */
@@ -363,7 +405,7 @@
       flex-wrap: wrap;
     }
     .tab-btn {
-      background: rgba(20,24,40,0.04);
+      background: var(--wash);
       border: 1px solid var(--border);
       color: var(--text-muted);
       padding: 6px 14px;
@@ -374,12 +416,12 @@
       transition: all 0.2s;
     }
     .tab-btn:hover {
-      background: rgba(20,24,40,0.06);
+      background: var(--wash-2);
       color: var(--text);
     }
     .tab-btn.active {
-      background: #2f5b8f;
-      border-color: #2f5b8f;
+      background: var(--primary);
+      border-color: var(--primary);
       color: #fff;
       font-weight: 500;
     }
@@ -389,7 +431,7 @@
       gap: 8px;
     }
     .search-input {
-      background: #ffffff;
+      background: var(--bg-card);
       border: 1px solid var(--border-light);
       border-radius: 8px;
       padding: 8px 12px;
@@ -402,7 +444,7 @@
       border-color: var(--primary);
     }
     .btn-refresh {
-      background: #f8f9fb;
+      background: var(--bg-dark);
       border: 1px solid var(--border);
       color: var(--text-muted);
       padding: 8px 10px;
@@ -412,7 +454,7 @@
     .btn-refresh:hover {
       color: var(--text);
       border-color: var(--border-light);
-      background: #eef1f5;
+      background: var(--soft);
     }
 
     /* TABLE */
@@ -426,7 +468,7 @@
       font-size: 13px;
     }
     th {
-      background: #f4f5f7;
+      background: var(--th-bg);
       color: var(--text-muted);
       font-weight: 500;
       padding: 12px 14px;
@@ -439,7 +481,7 @@
       vertical-align: middle;
     }
     tr:hover td {
-      background: rgba(20,24,40,0.03);
+      background: var(--wash);
     }
 
     /* Pin the "ส่งต่อ / จัดการ" column so ส่ง LINE / ลบ are always reachable
@@ -452,25 +494,25 @@
       box-shadow: -8px 0 10px -8px rgba(20,24,40,0.14);
     }
     .table-wrapper th:last-child {
-      background: #f4f5f7;
+      background: var(--th-bg);
       z-index: 3;
     }
     .table-wrapper td:last-child {
       z-index: 2;
     }
     .table-wrapper tr:hover td:last-child {
-      background: #f4f6f8;
+      background: var(--row-hover);
     }
     .cell-phone {
       font-family: monospace;
       font-weight: 600;
-      color: #2f5b8f;
+      color: var(--primary);
     }
     .select-sm {
-      background: #ffffff;
+      background: var(--bg-card);
       border: 1px solid var(--border-light);
       border-radius: 6px;
-      color: #1a1d24;
+      color: var(--text);
       padding: 6px 10px;
       font-size: 12px;
       outline: none;
@@ -499,7 +541,7 @@
     .btn-del-row {
       background: transparent;
       border: none;
-      color: #9aa0ab;
+      color: var(--faint);
       cursor: pointer;
       padding: 4px 6px;
       border-radius: 4px;
@@ -517,7 +559,7 @@
     .modal-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(20,24,40,0.4);
+      background: var(--overlay);
       
       display: none;
       align-items: center;
@@ -562,7 +604,7 @@
     }
     .form-input, .form-select {
       width: 100%;
-      background: #ffffff;
+      background: var(--bg-card);
       border: 1px solid var(--border-light);
       border-radius: 8px;
       padding: 10px 12px;
@@ -580,16 +622,16 @@
       margin-top: 6px;
     }
     .tag-chip {
-      background: rgba(20,24,40,0.04);
+      background: var(--wash);
       border: 1px solid var(--border);
       border-radius: 4px;
       padding: 3px 8px;
       font-size: 11px;
-      color: #6b7280;
+      color: var(--text-muted);
       cursor: pointer;
     }
     .tag-chip:hover {
-      background: rgba(20,24,40,0.06);
+      background: var(--wash-2);
       color: var(--text);
     }
   </style>
@@ -610,16 +652,16 @@
           <span class="dot"></span>
           ระบบกำลังดักจับเบอร์โทรลูกค้า
         </div>
-        <span id="saveIndicator" style="font-size: 11px; color: #127a54; opacity: 0.8; font-weight: 500;">
+        <span id="saveIndicator" style="font-size: 11px; color: var(--success); opacity: 0.8; font-weight: 500;">
           บันทึกข้อมูลถาวรแล้ว 💾
         </span>
       </div>
 
       <div class="nav-actions">
-        <span id="userRoleBadge" style="font-size: 11px; padding: 4px 10px; border-radius: 6px; font-weight: 600; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #127a54; display: inline-flex; align-items: center; gap: 4px;">
+        <span id="userRoleBadge" style="font-size: 11px; padding: 4px 10px; border-radius: 6px; font-weight: 600; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--success); display: inline-flex; align-items: center; gap: 4px;">
           👑 Admin
         </span>
-        <button class="btn" style="background: #2f5b8f; color: white; border: none; font-weight: 500;" onclick="openReportModal()" title="ดูรีพอร์ตสรุปประจำวัน & คัดลอกส่งผู้บริหาร">
+        <button class="btn" style="background: var(--primary); color: white; border: none; font-weight: 500;" onclick="openReportModal()" title="ดูรีพอร์ตสรุปประจำวัน & คัดลอกส่งผู้บริหาร">
           📊 รายงานประจำวัน (Report)
         </button>
         <button class="btn btn-webhook admin-only" onclick="copyWebhookUrl()">
@@ -652,7 +694,10 @@
         <button class="btn btn-trash admin-only" onclick="clearAllLeads()" title="ล้างข้อมูลทั้งหมด">
           🗑️
         </button>
-        <button class="btn btn-trash" onclick="logoutCRM()" style="background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.4); color: #c0392b;" title="ออกจากระบบ">
+        <button class="btn btn-excel" id="themeToggleBtn" onclick="toggleTheme()" title="สลับโหมดสว่าง / มืด">
+          🌙
+        </button>
+        <button class="btn btn-trash" onclick="logoutCRM()" style="background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.4); color: var(--danger);" title="ออกจากระบบ">
           🚪 Logout
         </button>
       </div>
@@ -661,18 +706,18 @@
     </header>
 
     <!-- REAL-TIME MULTI-DEVICE CLOUD SYNC STATUS BAR -->
-    <div class="sync-status-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; background: #ffffff; border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; margin-bottom: 16px; font-size: 12px; color: #6b7280; ">
+    <div class="sync-status-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; margin-bottom: 16px; font-size: 12px; color: var(--text-muted); ">
       <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #127a54; "></span>
-        <span>สถานะ: <strong style="color: #2f5b8f;">Cloud Sync เรียลไทม์ (ทุกอุปกรณ์)</strong></span>
-        <span style="color: #cdd2da;">|</span>
+        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--success); "></span>
+        <span>สถานะ: <strong style="color: var(--primary);">Cloud Sync เรียลไทม์ (ทุกอุปกรณ์)</strong></span>
+        <span style="color: var(--border-light);">|</span>
         <span id="lastSyncTimeText">🟢 ซิงค์ล่าสุด: กำลังโหลด...</span>
-        <span style="color: #cdd2da;">|</span>
-        <span id="appVersionBadge" style="background: #eef1f5; border: 1px solid #e6e8ec; color: #2f5b8f; padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.28.1</span>
+        <span style="color: var(--border-light);">|</span>
+        <span id="appVersionBadge" style="background: var(--soft); border: 1px solid var(--border); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.28.2</span>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
-        <span id="saveIndicator" style="color: #127a54; font-size: 11px; transition: opacity 0.3s; opacity: 0.8;"></span>
-        <button onclick="refreshLeads(true)" style="background: #eef1f5; border: 1px solid var(--border); color: #2f5b8f; border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s;" onmouseover="this.style.background='#e2e6ec'" onmouseout="this.style.background='#eef1f5'">
+        <span id="saveIndicator" style="color: var(--success); font-size: 11px; transition: opacity 0.3s; opacity: 0.8;"></span>
+        <button onclick="refreshLeads(true)" style="background: var(--soft); border: 1px solid var(--border); color: var(--primary); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s;" onmouseover="this.style.background='var(--soft-hover)'" onmouseout="this.style.background='var(--soft)'">
           🔄 รีเฟรชทันที
         </button>
       </div>
@@ -813,7 +858,7 @@
       </div>
 
       <!-- Current List -->
-      <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #1a1d24;">รายการช่องทางปัจจุบัน:</div>
+      <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text);">รายการช่องทางปัจจุบัน:</div>
       <div id="channelSourcesList" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
         <!-- Populated by JS -->
       </div>
@@ -842,7 +887,7 @@
       </div>
 
       <!-- Current List -->
-      <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #1a1d24;">รายการประเภทรถปัจจุบัน:</div>
+      <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text);">รายการประเภทรถปัจจุบัน:</div>
       <div id="truckTypesList" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
         <!-- Populated by JS -->
       </div>
@@ -968,10 +1013,10 @@
         <button class="btn-close" onclick="closeModal('logsModal')">&times;</button>
       </div>
       <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-        <button class="btn-refresh" id="logTabWebhookBtn" style="background: #2f5b8f; color: white;" onclick="switchLogTab('webhook')">📡 PanCake Webhook Logs</button>
+        <button class="btn-refresh" id="logTabWebhookBtn" style="background: var(--primary); color: white;" onclick="switchLogTab('webhook')">📡 PanCake Webhook Logs</button>
         <button class="btn-refresh admin-only" id="logTabAuditBtn" onclick="switchLogTab('audit')">🛡️ Security Audit Logs (ความปลอดภัย)</button>
       </div>
-      <div id="liveLogsContent" style="background: #f8f9fb; border: 1px solid var(--border); border-radius: 8px; padding: 14px; max-height: 360px; overflow-y: auto; font-family: monospace; font-size: 12px; color: #2f5b8f;">
+      <div id="liveLogsContent" style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 14px; max-height: 360px; overflow-y: auto; font-family: monospace; font-size: 12px; color: var(--primary);">
         กำลังโหลด Log ล่าสุด...
       </div>
       <div style="display: flex; justify-content: space-between; margin-top: 12px;">
@@ -992,9 +1037,9 @@
       </div>
 
       <!-- Date Filter Toolbar -->
-      <div style="background: rgba(20,24,40,0.03); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;">
+      <div style="background: var(--wash); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;">
         <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="reportFilterButtons">
-          <button class="btn-refresh rep-filter-btn" id="repBtnToday" onclick="setReportPeriod('today', this)" style="background: #2f5b8f; color: white; border-color: #2f5b8f;">วันนี้</button>
+          <button class="btn-refresh rep-filter-btn" id="repBtnToday" onclick="setReportPeriod('today', this)" style="background: var(--primary); color: white; border-color: var(--primary);">วันนี้</button>
           <button class="btn-refresh rep-filter-btn" id="repBtnYesterday" onclick="setReportPeriod('yesterday', this)">เมื่อวาน</button>
           <button class="btn-refresh rep-filter-btn" id="repBtn7days" onclick="setReportPeriod('7days', this)">7 วันล่าสุด</button>
           <button class="btn-refresh rep-filter-btn" id="repBtnMonth" onclick="setReportPeriod('month', this)">เดือนนี้</button>
@@ -1008,21 +1053,21 @@
 
       <!-- Summary KPI 4 Cards -->
       <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px;">
-        <div style="background: #f8f9fb; border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
+        <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
           <div style="font-size: 11px; color: var(--text-muted);">รวมเคสทั้งหมด</div>
-          <div id="repTotalLeads" style="font-size: 22px; font-weight: 700; color: #2f5b8f;">0</div>
+          <div id="repTotalLeads" style="font-size: 22px; font-weight: 700; color: var(--primary);">0</div>
         </div>
-        <div style="background: #f8f9fb; border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
+        <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
           <div style="font-size: 11px; color: var(--text-muted);">จ่ายงานเซลล์แล้ว</div>
-          <div id="repAssignedLeads" style="font-size: 22px; font-weight: 700; color: #127a54;">0</div>
+          <div id="repAssignedLeads" style="font-size: 22px; font-weight: 700; color: var(--success);">0</div>
         </div>
-        <div style="background: #f8f9fb; border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
+        <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
           <div style="font-size: 11px; color: var(--text-muted);">รอเลือกเซลล์</div>
-          <div id="repPendingLeads" style="font-size: 22px; font-weight: 700; color: #b7791f;">0</div>
+          <div id="repPendingLeads" style="font-size: 22px; font-weight: 700; color: var(--warning);">0</div>
         </div>
-        <div style="background: #f8f9fb; border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
+        <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center;">
           <div style="font-size: 11px; color: var(--text-muted);">ช่วงเวลาที่เลือก</div>
-          <div id="repPeriodLabel" style="font-size: 12px; font-weight: 600; color: #1a1d24; margin-top: 6px;">วันนี้</div>
+          <div id="repPeriodLabel" style="font-size: 12px; font-weight: 600; color: var(--text); margin-top: 6px;">วันนี้</div>
         </div>
       </div>
 
@@ -1034,14 +1079,14 @@
       <!-- Report Tables Grid (2 columns: Sales Breakdown & Trucks/Ads) -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
         <!-- Left: Sales Rep Distribution -->
-        <div style="background: #f8f9fb; border: 1px solid var(--border); border-radius: 8px; padding: 12px; max-height: 240px; overflow-y: auto;">
-          <div style="font-size: 12px; font-weight: 600; color: #127a54; margin-bottom: 8px; display: flex; justify-content: space-between;">
+        <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 12px; max-height: 240px; overflow-y: auto;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--success); margin-bottom: 8px; display: flex; justify-content: space-between;">
             <span>👥 สรุปการกระจายเคส (8 เซลล์)</span>
             <span id="repSalesTotal">0 เคส</span>
           </div>
           <table style="width: 100%; font-size: 11px;">
             <thead>
-              <tr style="border-bottom: 1px solid rgba(20,24,40,0.06);">
+              <tr style="border-bottom: 1px solid var(--wash-2);">
                 <th style="padding: 4px 6px;">ชื่อเซลล์</th>
                 <th style="padding: 4px 6px; text-align: right;">เคส</th>
                 <th style="padding: 4px 6px; text-align: right;">ส่งรีพอต</th>
@@ -1055,12 +1100,12 @@
         </div>
 
         <!-- Right: Truck & Ad Breakdown -->
-        <div style="background: #f8f9fb; border: 1px solid var(--border); border-radius: 8px; padding: 12px; max-height: 240px; overflow-y: auto;">
-          <div style="font-size: 12px; font-weight: 600; color: #2f5b8f; margin-bottom: 8px; display: flex; justify-content: space-between;">
+        <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 12px; max-height: 240px; overflow-y: auto;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--primary); margin-bottom: 8px; display: flex; justify-content: space-between;">
             <span>🚚 สรุปตามประเภทรถ & แอด</span>
             <span id="repTruckTotal">0 เคส</span>
           </div>
-          <div id="repTruckBreakdown" style="font-size: 11px; line-height: 1.6; color: #4b5563;">
+          <div id="repTruckBreakdown" style="font-size: 11px; line-height: 1.6; color: var(--text-2);">
             <!-- Populated by JS -->
           </div>
         </div>
@@ -1068,7 +1113,7 @@
 
       <!-- Action Buttons -->
       <div style="display: flex; gap: 10px; justify-content: flex-end; border-top: 1px solid var(--border); padding-top: 14px;">
-        <button class="btn" style="background: #127a54; color: white; font-weight: 500; border: none; padding: 10px 18px;" onclick="copyDailyReportToLine()">
+        <button class="btn" style="background: var(--success); color: white; font-weight: 500; border: none; padding: 10px 18px;" onclick="copyDailyReportToLine()">
           📋 คัดลอกสรุปส่งไลน์กลุ่ม (LINE Report)
         </button>
         <button class="btn btn-excel" onclick="exportReportPeriodCSV()">
@@ -1079,6 +1124,25 @@
   </div>
 
   <script>
+
+    // Light / dark theme (default light, remembered per device)
+    function applyTheme(t) {
+      const mode = (t === 'dark') ? 'dark' : 'light';
+      if (mode === 'dark') document.documentElement.dataset.theme = 'dark';
+      else document.documentElement.removeAttribute('data-theme');
+      try { localStorage.setItem('pancake_theme', mode); } catch(e) {}
+      const btn = document.getElementById('themeToggleBtn');
+      if (btn) btn.textContent = (mode === 'dark') ? '☀️' : '🌙';
+      try { if (typeof refreshChartsTheme === 'function') refreshChartsTheme(); } catch(e) {}
+    }
+    function toggleTheme() {
+      applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+    }
+    (function () {
+      let saved = 'light';
+      try { saved = localStorage.getItem('pancake_theme') || 'light'; } catch(e) {}
+      applyTheme(saved);
+    })();
 
     // 8 Sales Team Members
     const SALES_TEAM = [
@@ -1199,9 +1263,9 @@
       const list = document.getElementById('truckTypesList');
       if (!list) return;
       list.innerHTML = truckTypes.map((t, idx) => `
-        <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(20,24,40,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; transition: all 0.2s;">
-          <span style="font-weight: 500; font-size: 13px; color: #1a1d24;">🚚 ${t}</span>
-          <button style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #c0392b; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'" onclick="removeTruckType(${idx})" title="ลบประเภทรถนี้">
+        <div style="display: flex; align-items: center; justify-content: space-between; background: var(--wash); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; transition: all 0.2s;">
+          <span style="font-weight: 500; font-size: 13px; color: var(--text);">🚚 ${t}</span>
+          <button style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: var(--danger); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'" onclick="removeTruckType(${idx})" title="ลบประเภทรถนี้">
             ลบ
           </button>
         </div>
@@ -1318,9 +1382,9 @@
       const list = document.getElementById('channelSourcesList');
       if (!list) return;
       list.innerHTML = channelSources.map((c, idx) => `
-        <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(20,24,40,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; transition: all 0.2s;">
-          <span style="font-weight: 500; font-size: 13px; color: #1a1d24;">📱 ${c}</span>
-          <button style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #c0392b; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'" onclick="removeChannelSource(${idx})" title="ลบช่องทางนี้">
+        <div style="display: flex; align-items: center; justify-content: space-between; background: var(--wash); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; transition: all 0.2s;">
+          <span style="font-weight: 500; font-size: 13px; color: var(--text);">📱 ${c}</span>
+          <button style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: var(--danger); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'" onclick="removeChannelSource(${idx})" title="ลบช่องทางนี้">
             ลบ
           </button>
         </div>
@@ -1410,7 +1474,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.08.28.1';
+    const APP_VERSION = '2026.08.28.2';
     let lastSyncTimestamp = 0;
     const DEFAULT_ADMIN_TOKEN = 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
     let currentUserRole = 'admin'; // 'admin' | 'sales'
@@ -1425,10 +1489,10 @@
       const now = new Date().toLocaleTimeString('th-TH');
       if (isError) {
         el.innerHTML = `⚠️ ขัดข้อง (${now})`;
-        el.style.color = '#c0392b';
+        el.style.color = 'var(--danger)';
       } else {
-        el.innerHTML = `🟢 ซิงค์ล่าสุด: <strong style="color:#1a1d24;">${now}</strong>`;
-        el.style.color = '#127a54';
+        el.innerHTML = `🟢 ซิงค์ล่าสุด: <strong style="color:var(--text);">${now}</strong>`;
+        el.style.color = 'var(--success)';
       }
     }
 
@@ -1463,10 +1527,10 @@
       const { value: token } = await Swal.fire({
         title: '🔒 เข้าสู่ระบบ Pancake Sales CRM',
         html: `
-          <p style="font-size: 13px; color: #6b7280; margin-bottom: 12px;">
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
             ${customMsg || 'ระบบใช้การยืนยันตัวตนด้วย <strong>httpOnly Cookie & Secret Token</strong> กรุณากรอกรหัสผ่าน'}
           </p>
-          <div style="font-size: 11px; text-align: left; background: rgba(47,91,143,0.06); border: 1px solid rgba(47,91,143,0.2); padding: 8px 12px; border-radius: 6px; color: #2f5b8f; margin-bottom: 10px;">
+          <div style="font-size: 11px; text-align: left; background: rgba(47,91,143,0.06); border: 1px solid rgba(47,91,143,0.2); padding: 8px 12px; border-radius: 6px; color: var(--primary); margin-bottom: 10px;">
             👑 <strong>Admin Token:</strong> เข้าถึงได้ทั้งหมด 100%<br>
             👤 <strong>Sales Token:</strong> เข้าอ่านและพิมพ์รีพอร์ตเซลล์ (ไม่อนุญาตให้ลบเคส)
           </div>
@@ -1477,7 +1541,7 @@
         showCancelButton: false,
         allowOutsideClick: false,
         allowEscapeKey: false,
-        confirmButtonColor: '#2f5b8f',
+        confirmButtonColor: 'var(--primary)',
         confirmButtonText: 'เข้าสู่ระบบ (Login)',
         inputValidator: (val) => {
           if (!val) return 'กรุณากรอกรหัสผ่านหรือ Secret Token ก่อนเข้าใช้งาน';
@@ -1541,12 +1605,12 @@
           roleBadge.innerHTML = '👑 Admin';
           roleBadge.style.background = 'rgba(16, 185, 129, 0.15)';
           roleBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
-          roleBadge.style.color = '#127a54';
+          roleBadge.style.color = 'var(--success)';
         } else {
           roleBadge.innerHTML = '👤 Sales';
           roleBadge.style.background = 'rgba(47, 91, 143, 0.15)';
           roleBadge.style.borderColor = 'rgba(47, 91, 143, 0.4)';
-          roleBadge.style.color = '#2f5b8f';
+          roleBadge.style.color = 'var(--primary)';
         }
       }
 
@@ -2086,9 +2150,9 @@
         if (filtered.length === 0) {
           tbody.innerHTML = `
             <tr>
-              <td colspan="10" class="empty-state" style="text-align: center; padding: 30px; color: #6b7280;">
+              <td colspan="10" class="empty-state" style="text-align: center; padding: 30px; color: var(--text-muted);">
                 📭 ยังไม่มีข้อมูลเคสลูกค้าที่ตรงกับเงื่อนไข<br>
-                <span style="font-size: 11px; color: #9aa0ab;">(เมื่อ PanCake ส่ง Webhook เข้ามา หรือกดเลือกแท็บ "ทั้งหมด" ข้อมูลจะแสดงตรงนี้)</span>
+                <span style="font-size: 11px; color: var(--faint);">(เมื่อ PanCake ส่ง Webhook เข้ามา หรือกดเลือกแท็บ "ทั้งหมด" ข้อมูลจะแสดงตรงนี้)</span>
               </td>
             </tr>
           `;
@@ -2122,9 +2186,9 @@
           return `
             <tr>
               <td>${leadDate}</td>
-              <td style="color: #6b7280;">${leadTime}</td>
+              <td style="color: var(--text-muted);">${leadTime}</td>
               <td>
-                <select class="select-sm" onchange="updateLeadSource(${realIdx}, this.value)" style="background: rgba(20,24,40,0.06); font-size: 11px;">
+                <select class="select-sm" onchange="updateLeadSource(${realIdx}, this.value)" style="background: var(--wash-2); font-size: 11px;">
                   ${channelOptionsHtml}
                 </select>
               </td>
@@ -2133,16 +2197,16 @@
                 <a href="tel:${leadPhone}" style="color: inherit; text-decoration: none;" title="กดเพื่อโทร">${leadPhone}</a>
               </td>
               <td>
-                <select class="select-sm" style="${lead.truck ? 'border-color: #2f5b8f; color: #2f5b8f;' : 'border-color: #b7791f; color: #b7791f;'}" onchange="updateLeadTruck(${realIdx}, this.value)">
+                <select class="select-sm" style="${lead.truck ? 'border-color: var(--primary); color: var(--primary);' : 'border-color: var(--warning); color: var(--warning);'}" onchange="updateLeadTruck(${realIdx}, this.value)">
                   <option value="">-- เลือกรถ --</option>
                   ${truckOptionsHtml}
                 </select>
               </td>
               <td>
-                ${leadAd ? `<span style="background: rgba(47, 91, 143, 0.12); border: 1px solid rgba(47, 91, 143, 0.3); color: #2f5b8f; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; display: inline-block; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${leadAd}">📢 ${leadAd}</span>` : '<span style="color: #9aa0ab; font-size: 12px;">-</span>'}
+                ${leadAd ? `<span style="background: rgba(47, 91, 143, 0.12); border: 1px solid rgba(47, 91, 143, 0.3); color: var(--primary); padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; display: inline-block; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${leadAd}">📢 ${leadAd}</span>` : '<span style="color: var(--faint); font-size: 12px;">-</span>'}
               </td>
               <td>
-                <select class="select-sm" style="${leadSales ? 'border-color: #10b981; color: #127a54;' : 'border-color: #b7791f; color: #b7791f;'}" onchange="updateLeadSales(${realIdx}, this.value)">
+                <select class="select-sm" style="${leadSales ? 'border-color: #10b981; color: var(--success);' : 'border-color: var(--warning); color: var(--warning);'}" onchange="updateLeadSales(${realIdx}, this.value)">
                   <option value="">-- เลือกเซลล์ --</option>
                   ${SALES_TEAM.map(s => `<option value="${s.name}" ${leadSales === s.name ? 'selected' : ''}>${s.name}</option>`).join('')}
                 </select>
@@ -2153,9 +2217,9 @@
                        placeholder="📝 พิมพ์รีพอร์ต เช่น สนใจเข้ามาดู..." 
                        oninput="updateLeadReport(${realIdx}, this.value)"
                        onchange="updateLeadReport(${realIdx}, this.value)"
-                       style="background: rgba(20,24,40,0.04); border: 1px solid var(--border-light); border-radius: 6px; color: #1a1d24; padding: 6px 10px; font-size: 12px; width: 100%; min-width: 200px; outline: none; transition: border-color 0.2s, background 0.2s;"
-                       onfocus="this.style.borderColor='#2f5b8f'; this.style.background='rgba(47,91,143,0.08)';"
-                       onblur="this.style.borderColor='var(--border-light)'; this.style.background='rgba(20,24,40,0.04)';"
+                       style="background: var(--wash); border: 1px solid var(--border-light); border-radius: 6px; color: var(--text); padding: 6px 10px; font-size: 12px; width: 100%; min-width: 200px; outline: none; transition: border-color 0.2s, background 0.2s;"
+                       onfocus="this.style.borderColor='var(--primary)'; this.style.background='rgba(47,91,143,0.08)';"
+                       onblur="this.style.borderColor='var(--border-light)'; this.style.background='var(--wash)';"
                 >
               </td>
               <td style="text-align: center; white-space: nowrap;">
@@ -2252,7 +2316,7 @@
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#ef4444',
-        cancelButtonColor: '#d7dbe1',
+        cancelButtonColor: 'var(--border-light)',
         confirmButtonText: 'ใช่, ลบเคสนี้',
         cancelButtonText: 'ยกเลิก'
       }).then(async (result) => {
@@ -2309,7 +2373,7 @@
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#ef4444',
-        cancelButtonColor: '#d7dbe1',
+        cancelButtonColor: 'var(--border-light)',
         confirmButtonText: 'ใช่, ล้างข้อมูล',
         cancelButtonText: 'ยกเลิก'
       }).then(async (result) => {
@@ -2361,7 +2425,7 @@
       navigator.clipboard.writeText(msg).then(() => {
         Swal.fire({
           title: 'คัดลอกข้อความ LINE แล้ว!',
-          html: `<div style="text-align: left; background: #eef1f5; padding: 12px; border-radius: 8px; font-size: 13px; white-space: pre-wrap; font-family: monospace; color: #2f5b8f;">${escapeHtml(msg)}</div>`,
+          html: `<div style="text-align: left; background: var(--soft); padding: 12px; border-radius: 8px; font-size: 13px; white-space: pre-wrap; font-family: monospace; color: var(--primary);">${escapeHtml(msg)}</div>`,
           icon: 'success',
           confirmButtonText: 'เปิดแอพ LINE เพื่อส่ง',
           showCancelButton: true,
@@ -2425,14 +2489,14 @@
     function setReportPeriod(period, btnElement) {
       currentReportPeriod = period;
       document.querySelectorAll('.rep-filter-btn').forEach(b => {
-        b.style.background = '#f8f9fb';
+        b.style.background = 'var(--bg-dark)';
         b.style.color = 'var(--text-muted)';
         b.style.borderColor = 'var(--border)';
       });
       if (btnElement) {
-        btnElement.style.background = '#2f5b8f';
+        btnElement.style.background = 'var(--primary)';
         btnElement.style.color = 'white';
-        btnElement.style.borderColor = '#2f5b8f';
+        btnElement.style.borderColor = 'var(--primary)';
       }
 
       renderReportData();
@@ -2444,7 +2508,7 @@
       currentReportPeriod = 'custom';
 
       document.querySelectorAll('.rep-filter-btn').forEach(b => {
-        b.style.background = '#f8f9fb';
+        b.style.background = 'var(--bg-dark)';
         b.style.color = 'var(--text-muted)';
         b.style.borderColor = 'var(--border)';
       });
@@ -2529,11 +2593,11 @@
         const st = salesStat[s.name];
         const outstanding = st.count - st.reported;
         return `
-          <tr style="border-bottom: 1px solid rgba(20,24,40,0.03);">
-            <td style="padding: 6px; font-weight: 500; color: #1a1d24;">${escapeHtml(s.name)}</td>
-            <td style="padding: 6px; text-align: right; font-weight: 700; color: ${st.count > 0 ? '#2f5b8f' : '#9aa0ab'};">${st.count}</td>
-            <td style="padding: 6px; text-align: right; color: ${st.reported > 0 ? '#127a54' : '#9aa0ab'};">${st.reported}</td>
-            <td style="padding: 6px; text-align: right; font-weight: 700; color: ${outstanding > 0 ? '#c0392b' : '#9aa0ab'};">${outstanding > 0 ? outstanding : '-'}</td>
+          <tr style="border-bottom: 1px solid var(--wash);">
+            <td style="padding: 6px; font-weight: 500; color: var(--text);">${escapeHtml(s.name)}</td>
+            <td style="padding: 6px; text-align: right; font-weight: 700; color: ${st.count > 0 ? 'var(--primary)' : 'var(--faint)'};">${st.count}</td>
+            <td style="padding: 6px; text-align: right; color: ${st.reported > 0 ? 'var(--success)' : 'var(--faint)'};">${st.reported}</td>
+            <td style="padding: 6px; text-align: right; font-weight: 700; color: ${outstanding > 0 ? 'var(--danger)' : 'var(--faint)'};">${outstanding > 0 ? outstanding : '-'}</td>
           </tr>
         `;
       }).join('');
@@ -2549,14 +2613,14 @@
         if (behind.length === 0) {
           outBox.style.borderColor = 'rgba(16,185,129,0.35)';
           outBox.style.background = 'rgba(16,185,129,0.08)';
-          outBox.style.color = '#127a54';
+          outBox.style.color = 'var(--success)';
           outBox.innerHTML = assigned > 0
             ? '✅ เซลล์ส่งรีพอตครบทุกเคสที่จ่ายงานในช่วงนี้แล้ว'
             : 'ยังไม่มีการจ่ายงานให้เซลล์ในช่วงนี้';
         } else {
           outBox.style.borderColor = 'rgba(239,68,68,0.3)';
           outBox.style.background = 'rgba(239,68,68,0.08)';
-          outBox.style.color = '#c0392b';
+          outBox.style.color = 'var(--danger)';
           outBox.innerHTML = `🔴 <strong>ยังไม่ส่งรีพอต ${totalOutstanding} เคส</strong> — `
             + behind.map(x => `คุณ${escapeHtml(x.name)} <strong>${x.n}</strong>`).join(' · ');
         }
@@ -2571,12 +2635,12 @@
       const truckEntries = Object.entries(truckMap).sort((a, b) => b[1] - a[1]);
       const truckContainer = document.getElementById('repTruckBreakdown');
       if (truckEntries.length === 0) {
-        truckContainer.innerHTML = '<span style="color: #9aa0ab;">ไม่มีข้อมูลเคสในช่วงนี้</span>';
+        truckContainer.innerHTML = '<span style="color: var(--faint);">ไม่มีข้อมูลเคสในช่วงนี้</span>';
       } else {
         truckContainer.innerHTML = truckEntries.map(([t, count]) => `
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px; background: rgba(20,24,40,0.03); padding: 4px 8px; border-radius: 4px;">
-            <span style="color: #1a1d24;">🚚 ${escapeHtml(t)}</span>
-            <span style="font-weight: 600; color: #2f5b8f;">${count} เคส</span>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px; background: var(--wash); padding: 4px 8px; border-radius: 4px;">
+            <span style="color: var(--text);">🚚 ${escapeHtml(t)}</span>
+            <span style="font-weight: 600; color: var(--primary);">${count} เคส</span>
           </div>
         `).join('');
       }
@@ -2593,12 +2657,12 @@
       if (!adContainer) {
         // Ad breakdown panel is optional in the current layout
       } else if (adEntries.length === 0) {
-        adContainer.innerHTML = '<span style="color: #9aa0ab;">ยังไม่มีข้อมูลชื่อแอดในช่วงนี้</span>';
+        adContainer.innerHTML = '<span style="color: var(--faint);">ยังไม่มีข้อมูลชื่อแอดในช่วงนี้</span>';
       } else {
         adContainer.innerHTML = adEntries.slice(0, 5).map(([ad, count]) => `
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px; background: rgba(47,91,143,0.06); border: 1px solid rgba(47,91,143,0.15); padding: 4px 8px; border-radius: 4px;">
-            <span style="color: #2f5b8f; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(ad)}">📢 ${escapeHtml(ad)}</span>
-            <span style="font-weight: 600; color: #2f5b8f;">${count}</span>
+            <span style="color: var(--primary); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(ad)}">📢 ${escapeHtml(ad)}</span>
+            <span style="font-weight: 600; color: var(--primary);">${count}</span>
           </div>
         `).join('');
       }
@@ -2688,7 +2752,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
       navigator.clipboard.writeText(reportText).then(() => {
         Swal.fire({
           title: 'คัดลอกรีพอร์ตแล้ว! 📋',
-          html: `<div style="text-align: left; background: #eef1f5; padding: 12px; border-radius: 8px; font-size: 12px; white-space: pre-wrap; font-family: monospace; color: #2f5b8f;">${escapeHtml(reportText)}</div>`,
+          html: `<div style="text-align: left; background: var(--soft); padding: 12px; border-radius: 8px; font-size: 12px; white-space: pre-wrap; font-family: monospace; color: var(--primary);">${escapeHtml(reportText)}</div>`,
           icon: 'success',
           confirmButtonText: 'เปิดแอพ LINE เพื่อส่ง',
           showCancelButton: true,
@@ -2727,15 +2791,44 @@ ${adSection}━━━━━━━━━━━━━━━━━━
       navigator.clipboard.writeText(url).then(() => {
         Swal.fire({
           title: 'คัดลอก Webhook URL (พร้อม Token) แล้ว!',
-          html: `<p style="font-size: 13px; color: #6b7280;">นำ URL ด้านล่างไปใส่ใน <strong>PanCake Settings > Webhook</strong>:</p><br><code style="color: #2f5b8f; background: #eef1f5; padding: 8px 12px; border-radius: 6px; word-break: break-all;">${url}</code><br><br><small style="color: #4ade80;">✓ มี Secret Token กำกับความปลอดภัยเรียบร้อย</small>`,
+          html: `<p style="font-size: 13px; color: var(--text-muted);">นำ URL ด้านล่างไปใส่ใน <strong>PanCake Settings > Webhook</strong>:</p><br><code style="color: var(--primary); background: var(--soft); padding: 8px 12px; border-radius: 6px; word-break: break-all;">${url}</code><br><br><small style="color: #4ade80;">✓ มี Secret Token กำกับความปลอดภัยเรียบร้อย</small>`,
           icon: 'success',
-          confirmButtonColor: '#2f5b8f'
+          confirmButtonColor: 'var(--primary)'
         });
       });
     }
 
 
-    // Charts
+    // Charts — canvas can't read CSS vars, so resolve palette from the theme
+    function chartPalette() {
+      const dark = document.documentElement.dataset.theme === 'dark';
+      return {
+        bar: dark ? '#5b93d6' : '#2f5b8f',
+        label: dark ? '#eae7df' : '#1a1d24',
+        tick: dark ? '#9a958a' : '#6b7280',
+        tick2: dark ? '#c3bcae' : '#4b5563',
+        grid: dark ? 'rgba(255,255,255,0.07)' : 'rgba(20,24,40,0.05)'
+      };
+    }
+
+    function refreshChartsTheme() {
+      const p = chartPalette();
+      try {
+        if (truckChartInstance) {
+          truckChartInstance.data.datasets[0].backgroundColor = p.bar;
+          truckChartInstance.options.scales.y.ticks.color = p.tick2;
+          truckChartInstance.update();
+        }
+        if (salesChartInstance) {
+          salesChartInstance.data.datasets[0].backgroundColor = p.bar;
+          salesChartInstance.options.scales.x.ticks.color = p.tick;
+          salesChartInstance.options.scales.y.ticks.color = p.tick;
+          salesChartInstance.options.scales.y.grid.color = p.grid;
+          salesChartInstance.update();
+        }
+      } catch(e) {}
+    }
+
     // Draws the value (จำนวนคัน) just past the end of each horizontal bar
     const barValueLabelPlugin = {
       id: 'barValueLabel',
@@ -2745,7 +2838,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
         const ctx = chart.ctx;
         ctx.save();
         ctx.font = '600 11px Prompt, sans-serif';
-        ctx.fillStyle = '#1a1d24';
+        ctx.fillStyle = chartPalette().label;
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
         meta.data.forEach((bar, i) => {
@@ -2767,7 +2860,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
             datasets: [{
               label: 'จำนวนคัน',
               data: (Array.isArray(truckTypes) && truckTypes.length ? truckTypes : DEFAULT_TRUCKS).map(() => 0),
-              backgroundColor: '#2f5b8f',
+              backgroundColor: chartPalette().bar,
               borderRadius: { topLeft: 0, bottomLeft: 0, topRight: 4, bottomRight: 4 },
               borderSkipped: false,
               maxBarThickness: 22
@@ -2787,7 +2880,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
             },
             scales: {
               x: { display: false, beginAtZero: true, grace: '10%' },
-              y: { ticks: { color: '#4b5563', font: { family: 'Prompt', size: 11 } }, grid: { display: false } }
+              y: { ticks: { color: chartPalette().tick2, font: { family: 'Prompt', size: 11 } }, grid: { display: false } }
             }
           },
           plugins: [barValueLabelPlugin]
@@ -2801,7 +2894,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
             datasets: [{
               label: 'จำนวนเคส',
               data: [0, 0, 0, 0, 0, 0, 0, 0],
-              backgroundColor: '#2f5b8f',
+              backgroundColor: chartPalette().bar,
               borderRadius: 6
             }]
           },
@@ -2811,8 +2904,8 @@ ${adSection}━━━━━━━━━━━━━━━━━━
             animation: { duration: 300 },
             plugins: { legend: { display: false } },
             scales: {
-              x: { grid: { display: false }, ticks: { color: '#6b7280', font: { family: 'Prompt', size: 11 } } },
-              y: { beginAtZero: true, ticks: { color: '#9aa0ab', stepSize: 1, font: { family: 'Prompt', size: 10 } }, grid: { color: 'rgba(20,24,40,0.04)' } }
+              x: { grid: { display: false }, ticks: { color: chartPalette().tick, font: { family: 'Prompt', size: 11 } } },
+              y: { beginAtZero: true, ticks: { color: chartPalette().tick, stepSize: 1, font: { family: 'Prompt', size: 10 } }, grid: { color: chartPalette().grid } }
             }
           }
         });
@@ -3077,12 +3170,12 @@ ${adSection}━━━━━━━━━━━━━━━━━━
       const btnAudit = document.getElementById('logTabAuditBtn');
 
       if (tab === 'webhook') {
-        if (btnWebhook) { btnWebhook.style.background = '#2f5b8f'; btnWebhook.style.color = 'white'; }
-        if (btnAudit) { btnAudit.style.background = '#f8f9fb'; btnAudit.style.color = 'var(--text-muted)'; }
+        if (btnWebhook) { btnWebhook.style.background = 'var(--primary)'; btnWebhook.style.color = 'white'; }
+        if (btnAudit) { btnAudit.style.background = 'var(--bg-dark)'; btnAudit.style.color = 'var(--text-muted)'; }
         fetchLiveLogs();
       } else {
-        if (btnAudit) { btnAudit.style.background = '#2f5b8f'; btnAudit.style.color = 'white'; }
-        if (btnWebhook) { btnWebhook.style.background = '#f8f9fb'; btnWebhook.style.color = 'var(--text-muted)'; }
+        if (btnAudit) { btnAudit.style.background = 'var(--primary)'; btnAudit.style.color = 'white'; }
+        if (btnWebhook) { btnWebhook.style.background = 'var(--bg-dark)'; btnWebhook.style.color = 'var(--text-muted)'; }
         fetchAuditLogs();
       }
     }
@@ -3105,16 +3198,16 @@ ${adSection}━━━━━━━━━━━━━━━━━━
         const data = await res.json();
         if (data.webhookLogs && data.webhookLogs.length > 0) {
           container.innerHTML = data.webhookLogs.map((item, idx) => `
-            <div style="border-bottom: 1px solid rgba(20,24,40,0.06); padding-bottom: 8px; margin-bottom: 8px;">
+            <div style="border-bottom: 1px solid var(--wash-2); padding-bottom: 8px; margin-bottom: 8px;">
               <span style="color: #4ade80;">[#${idx+1}] ⏰ ${escapeHtml(item.timestamp)}</span><br>
-              <pre style="color: #4b5563; font-size: 11px; margin-top: 4px; overflow-x: auto;">${escapeHtml(JSON.stringify(item.payload, null, 2))}</pre>
+              <pre style="color: var(--text-2); font-size: 11px; margin-top: 4px; overflow-x: auto;">${escapeHtml(JSON.stringify(item.payload, null, 2))}</pre>
             </div>
           `).join('');
         } else {
           container.innerHTML = `
-            <div style="color: #6b7280; text-align: center; padding: 20px;">
+            <div style="color: var(--text-muted); text-align: center; padding: 20px;">
               📭 ยังไม่มี Request ยิงมาจาก PanCake<br>
-              <span style="font-size: 11px; color: #9aa0ab;">(เมื่อ PanCake มีการอัปเดตข้อมูลลูกค้า ระบบจะบันทึก Log ก้อน JSON ตรงนี้ทันที)</span>
+              <span style="font-size: 11px; color: var(--faint);">(เมื่อ PanCake มีการอัปเดตข้อมูลลูกค้า ระบบจะบันทึก Log ก้อน JSON ตรงนี้ทันที)</span>
             </div>
           `;
         }
@@ -3136,24 +3229,24 @@ ${adSection}━━━━━━━━━━━━━━━━━━
         const data = await res.json();
         if (data.logs && data.logs.length > 0) {
           container.innerHTML = data.logs.map((item, idx) => `
-            <div style="border-bottom: 1px solid rgba(20,24,40,0.06); padding-bottom: 8px; margin-bottom: 8px;">
+            <div style="border-bottom: 1px solid var(--wash-2); padding-bottom: 8px; margin-bottom: 8px;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="color: ${item.statusCode === 200 ? '#4ade80' : (item.statusCode === 429 ? '#b7791f' : '#c0392b')}; font-weight: 600;">
+                <span style="color: ${item.statusCode === 200 ? '#4ade80' : (item.statusCode === 429 ? 'var(--warning)' : 'var(--danger)')}; font-weight: 600;">
                   [#${idx+1}] [${escapeHtml(item.method)}] ${escapeHtml(item.statusCode)} (${escapeHtml(item.role)})
                 </span>
-                <span style="color: #6b7280; font-size: 11px;">⏰ ${escapeHtml(item.timestamp)}</span>
+                <span style="color: var(--text-muted); font-size: 11px;">⏰ ${escapeHtml(item.timestamp)}</span>
               </div>
-              <div style="color: #4b5563; font-size: 11px; margin-top: 4px;">
-                🌐 IP: <strong style="color: #2f5b8f;">${escapeHtml(item.ip)}</strong> | Action: <strong style="color: #facc15;">${escapeHtml(item.action)}</strong> | Token: <code>${escapeHtml(item.token)}</code>
+              <div style="color: var(--text-2); font-size: 11px; margin-top: 4px;">
+                🌐 IP: <strong style="color: var(--primary);">${escapeHtml(item.ip)}</strong> | Action: <strong style="color: #facc15;">${escapeHtml(item.action)}</strong> | Token: <code>${escapeHtml(item.token)}</code>
               </div>
-              <div style="color: #9aa0ab; font-size: 10px; margin-top: 2px;">
+              <div style="color: var(--faint); font-size: 10px; margin-top: 2px;">
                 Path: ${escapeHtml(item.path)} | UA: ${escapeHtml(item.userAgent)}
               </div>
             </div>
           `).join('');
         } else {
           container.innerHTML = `
-            <div style="color: #6b7280; text-align: center; padding: 20px;">
+            <div style="color: var(--text-muted); text-align: center; padding: 20px;">
               🛡️ ยังไม่มี Security Audit Log ในช่วงนี้
             </div>
           `;
