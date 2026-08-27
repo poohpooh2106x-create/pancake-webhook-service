@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.28.3';
+const APP_VERSION = '2026.08.28.4';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -55,16 +55,7 @@ function upstashCommand(command) {
 }
 
 // Read the shared state object ({ leads, truckTypes, channels, ... }) or null.
-async function storageLoad() {
-  if (USE_UPSTASH) {
-    try {
-      const raw = await upstashCommand(['GET', STORAGE_KEY]);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) {
-      console.error('storageLoad (upstash) error:', e.message);
-      return null;
-    }
-  }
+function legacyObjectLoad() {
   return new Promise((resolve) => {
     https.get(CLOUD_API_URL, (res) => {
       let body = '';
@@ -77,6 +68,30 @@ async function storageLoad() {
       });
     }).on('error', () => resolve(null));
   });
+}
+
+async function storageLoad() {
+  if (!USE_UPSTASH) return legacyObjectLoad();
+  try {
+    const raw = await upstashCommand(['GET', STORAGE_KEY]);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.error('storageLoad (upstash) error:', e.message);
+    return null;
+  }
+  // First run on Upstash: seed from the old restful-api.dev object so the
+  // existing leads carry over instead of resetting to the hardcoded defaults.
+  try {
+    const seed = await legacyObjectLoad();
+    if (seed && (Array.isArray(seed.leads) || Array.isArray(seed.recentLeads))) {
+      await upstashCommand(['SET', STORAGE_KEY, JSON.stringify(seed)]);
+      console.log('storageLoad: seeded Upstash from legacy object');
+      return seed;
+    }
+  } catch (e) {
+    console.error('storageLoad seed error:', e.message);
+  }
+  return null;
 }
 
 // Persist the shared state object. Returns true on success.
