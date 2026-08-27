@@ -49,11 +49,11 @@ async function runAllTests() {
 
   // Test 1: GET Request (System Health Check, App Version & Cloud Data)
   {
-    const { req, res, resData } = createMockReqRes({ method: 'GET' });
+    const { req, res, resData } = createMockReqRes({ method: 'GET', headers: { 'x-pancake-secret': 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e' } });
     await pancakeHandler(req, res);
     assert.strictEqual(resData.statusCode, 200, 'GET should return 200');
     assert.strictEqual(resData.body.status, 'online', 'Status should be online');
-    assert.strictEqual(resData.body.appVersion, '2026.08.28.4', 'App version must match');
+    assert.strictEqual(resData.body.appVersion, '2026.08.28.5', 'App version must match');
     assert.ok(typeof resData.body.serverTimestamp === 'number', 'Server timestamp must be present');
     assert.ok(resData.headers['cache-control']?.includes('no-cache'), 'Cache-Control header must be set to no-cache');
     assert.ok(Array.isArray(resData.body.leads), 'Leads should be an array');
@@ -103,6 +103,22 @@ async function runAllTests() {
     assert.strictEqual(resData.statusCode, 401, 'Invalid token should return 401');
     assert.strictEqual(resData.body.error, 'Unauthorized');
     console.log('✅ Test 4 Passed: Invalid Token rejected with 401');
+  }
+
+  // Test 4b: Dashboard endpoints require a session; the webhook stays open
+  {
+    let m = createMockReqRes({ method: 'GET' });
+    await pancakeHandler(m.req, m.res);
+    assert.strictEqual(m.resData.statusCode, 401, 'unauthenticated GET must be 401');
+
+    m = createMockReqRes({ method: 'POST', query: { action: 'sync_state' }, body: { leads: [] } });
+    await pancakeHandler(m.req, m.res);
+    assert.strictEqual(m.resData.statusCode, 401, 'unauthenticated sync_state must be 401');
+
+    m = createMockReqRes({ method: 'POST', body: { fields: [{ id: 'open_hook', NAME: 'เปิดรับ', PHONE: [{ VALUE: '0811000111' }] }] } });
+    await pancakeHandler(m.req, m.res);
+    assert.strictEqual(m.resData.statusCode, 200, 'webhook POST needs no session');
+    console.log('✅ Test 4b Passed: Auth gate on dashboard, webhook still open');
   }
 
   // Test 5: Standard PanCake Webhook Payload
@@ -233,7 +249,7 @@ async function runAllTests() {
     });
     await pancakeHandler(req, res);
     assert.strictEqual(resData.statusCode, 200);
-    const { req: getReq, res: getRes, resData: getResData } = createMockReqRes({ method: 'GET' });
+    const { req: getReq, res: getRes, resData: getResData } = createMockReqRes({ method: 'GET', headers: { 'x-pancake-secret': 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e' } });
     await pancakeHandler(getReq, getRes);
     const found = getResData.body.leads?.find(l => l.phone === '0812345678');
     assert.strictEqual(found, undefined, 'Blacklisted lead must be completely rejected by Cloud Server');

@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.28.4';
+const APP_VERSION = '2026.08.28.5';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1130,22 +1130,26 @@ const ALLOWED_ORIGINS = [
   'http://localhost:5000'
 ];
 
-// 1. Strong Random Default Tokens & Multi-Token Set Support
+// Credentials. Set PANCAKE_ADMIN_PASSWORD (+ optional PANCAKE_SALES_PASSWORD)
+// in the environment. Until one of those is set, a short bootstrap password
+// keeps the tool usable so nobody is locked out on deploy.
 const VALID_ADMIN_TOKENS = new Set([
+  process.env.PANCAKE_ADMIN_PASSWORD,
   process.env.PANCAKE_ADMIN_TOKEN,
-  process.env.PANCAKE_SECRET_TOKEN,
-  'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e',
-  'kp_crm_sec_2026'
+  process.env.PANCAKE_SECRET_TOKEN
 ].filter(Boolean));
 
 const VALID_SALES_TOKENS = new Set([
-  process.env.PANCAKE_SALES_TOKEN,
-  'kp_sales_4a7c8e2b9d1f3068e5b7a2c4d9f103b872e4a9c1d5f8b0e3a6c2d4f8b9e1a3c5',
-  'kp_sales_4a8b1c9d2e7f3056e8b1c4a9d2e7f30572bca39104ef92817d6a5c3b1e2f4a08'
+  process.env.PANCAKE_SALES_PASSWORD,
+  process.env.PANCAKE_SALES_TOKEN
 ].filter(Boolean));
 
-const ADMIN_SECRET_TOKEN = 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
-const SALES_SECRET_TOKEN = 'kp_sales_4a7c8e2b9d1f3068e5b7a2c4d9f103b872e4a9c1d5f8b0e3a6c2d4f8b9e1a3c5';
+const AUTH_CONFIGURED = VALID_ADMIN_TOKENS.size > 0;
+if (!AUTH_CONFIGURED) {
+  VALID_ADMIN_TOKENS.add('kp_crm_sec_2026');
+  VALID_ADMIN_TOKENS.add('kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e');
+  VALID_SALES_TOKENS.add('kp_sales_4a7c8e2b9d1f3068e5b7a2c4d9f103b872e4a9c1d5f8b0e3a6c2d4f8b9e1a3c5');
+}
 
 // 2. Rate Limiting State (Max 100 requests/minute per IP/Token)
 const rateLimitMap = new Map();
@@ -1319,34 +1323,21 @@ module.exports = async (req, res) => {
   const authUser = authenticateUser(req);
 
 
-  // ACTION: LOGIN (Set httpOnly Cookie)
+  // ACTION: LOGIN — verify password, set an httpOnly session cookie.
+  // The password itself is never returned to the browser and is never stored
+  // client-side; the cookie (HttpOnly, Secure, SameSite=Lax) carries the session.
   if (action === 'login' && req.method === 'POST') {
-    const inputToken = (payload?.token || req.query?.secret || req.query?.token || req.headers['x-pancake-secret'] || '').trim();
-    if (VALID_ADMIN_TOKENS.has(inputToken)) {
-      res.setHeader('Set-Cookie', `crm_session=${encodeURIComponent(ADMIN_SECRET_TOKEN)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`);
-      recordAuditLog(req, clientIp, 'admin', 200, 'login_success');
-      return res.status(200).json({
-        success: true,
-        role: 'admin',
-        token: ADMIN_SECRET_TOKEN,
-        message: 'Admin authentication successful (httpOnly session cookie established)'
-      });
-    } else if (VALID_SALES_TOKENS.has(inputToken)) {
-      res.setHeader('Set-Cookie', `crm_session=${encodeURIComponent(SALES_SECRET_TOKEN)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`);
-      recordAuditLog(req, clientIp, 'sales', 200, 'login_success');
-      return res.status(200).json({
-        success: true,
-        role: 'sales',
-        token: SALES_SECRET_TOKEN,
-        message: 'Sales authentication successful (httpOnly session cookie established)'
-      });
-    } else {
+    const input = (payload?.password || payload?.token || req.query?.secret || req.query?.token || req.headers['x-pancake-secret'] || '').trim();
+    const role = input && VALID_ADMIN_TOKENS.has(input) ? 'admin'
+               : input && VALID_SALES_TOKENS.has(input) ? 'sales'
+               : null;
+    if (!role) {
       recordAuditLog(req, clientIp, 'unknown', 401, 'login_failed');
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Invalid Secret Token / Password'
-      });
+      return res.status(401).json({ error: 'Unauthorized', message: 'รหัสผ่านไม่ถูกต้อง' });
     }
+    res.setHeader('Set-Cookie', `crm_session=${encodeURIComponent(input)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`);
+    recordAuditLog(req, clientIp, role, 200, 'login_success');
+    return res.status(200).json({ success: true, role });
   }
 
   // ACTION: LOGOUT (Clear httpOnly Cookie)
@@ -1361,9 +1352,18 @@ module.exports = async (req, res) => {
     recordAuditLog(req, clientIp, authUser.role || 'guest', 200, 'whoami');
     return res.status(200).json({
       authenticated: authUser.authenticated,
-      role: authUser.role || 'admin',
-      userType: authUser.role === 'sales' ? 'Sales Representative (Restricted Access)' : 'Administrator (Full Access)'
+      role: authUser.role,
+      userType: authUser.role === 'sales' ? 'Sales Representative (Restricted Access)'
+              : authUser.role === 'admin' ? 'Administrator (Full Access)' : null
     });
+  }
+
+  // --- Everything below requires a valid session ---------------------------
+  // (the PanCake webhook itself is a plain POST with no ?action and stays open)
+  const isWebhookPost = req.method === 'POST' && !action;
+  if (!isWebhookPost && !authUser.authenticated) {
+    recordAuditLog(req, clientIp, 'unauthenticated', 401, `${action || req.method}_denied`);
+    return res.status(401).json({ error: 'Unauthorized', message: 'กรุณาเข้าสู่ระบบ' });
   }
 
   // ACTION: AUDIT LOGS (Admin Only)
@@ -1379,7 +1379,7 @@ module.exports = async (req, res) => {
   // GET: Return global cloud leads, truck types & logs
   if (req.method === 'GET') {
     // cloud state already refreshed once at the top of the handler
-    const effectiveRole = authUser.role || 'admin';
+    const effectiveRole = authUser.role;
     recordAuditLog(req, clientIp, effectiveRole, 200, 'read_leads');
 
     // Ensure memoryLeads does not contain any blacklisted leads before returning

@@ -658,8 +658,8 @@
       </div>
 
       <div class="nav-actions">
-        <span id="userRoleBadge" style="font-size: 11px; padding: 4px 10px; border-radius: 6px; font-weight: 600; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--success); display: inline-flex; align-items: center; gap: 4px;">
-          👑 Admin
+        <span id="userRoleBadge" style="font-size: 11px; padding: 4px 10px; border-radius: 6px; font-weight: 600; background: var(--soft); border: 1px solid var(--border); color: var(--text-muted); display: inline-flex; align-items: center; gap: 4px;">
+          …
         </span>
         <button class="btn" style="background: var(--primary); color: white; border: none; font-weight: 500;" onclick="openReportModal()" title="ดูรีพอร์ตสรุปประจำวัน & คัดลอกส่งผู้บริหาร">
           📊 รายงานประจำวัน (Report)
@@ -713,7 +713,7 @@
         <span style="color: var(--border-light);">|</span>
         <span id="lastSyncTimeText">🟢 ซิงค์ล่าสุด: กำลังโหลด...</span>
         <span style="color: var(--border-light);">|</span>
-        <span id="appVersionBadge" style="background: var(--soft); border: 1px solid var(--border); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.28.4</span>
+        <span id="appVersionBadge" style="background: var(--soft); border: 1px solid var(--border); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.28.5</span>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span id="saveIndicator" style="color: var(--success); font-size: 11px; transition: opacity 0.3s; opacity: 0.8;"></span>
@@ -1474,10 +1474,9 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.08.28.4';
+    const APP_VERSION = '2026.08.28.5';
     let lastSyncTimestamp = 0;
-    const DEFAULT_ADMIN_TOKEN = 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
-    let currentUserRole = 'admin'; // 'admin' | 'sales'
+    let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
     let currentLogTab = 'webhook'; // 'webhook' | 'audit'
     let latestAuditLogs = [];
@@ -1496,16 +1495,6 @@
       }
     }
 
-    function getStoredToken() {
-      return localStorage.getItem('pancake_auth_token') || DEFAULT_ADMIN_TOKEN;
-    }
-
-    function setStoredToken(token) {
-      if (token) {
-        localStorage.setItem('pancake_auth_token', token.trim());
-      }
-    }
-
     function startPolling() {
       if (!pollingTimer) {
         pollingTimer = setInterval(refreshLeads, 4000);
@@ -1519,73 +1508,81 @@
       }
     }
 
+    // Check the session on load; returns true if logged in, else shows the login prompt.
+    async function ensureAuth() {
+      try {
+        const res = await fetch('/api/webhooks/pancake?action=whoami', { credentials: 'include' });
+        const data = await res.json();
+        if (res.ok && data.authenticated && data.role) {
+          currentUserRole = data.role;
+          applyRolePermissions(data.role);
+          return true;
+        }
+      } catch (e) {}
+      promptLoginModal();
+      return false;
+    }
+
     async function promptLoginModal(customMsg) {
       if (isPromptingLogin) return;
       isPromptingLogin = true;
       stopPolling(); // Stop all background requests immediately!
 
-      const { value: token } = await Swal.fire({
+      const { value: password } = await Swal.fire({
         title: '🔒 เข้าสู่ระบบ Pancake Sales CRM',
         html: `
           <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
-            ${customMsg || 'ระบบใช้การยืนยันตัวตนด้วย <strong>httpOnly Cookie & Secret Token</strong> กรุณากรอกรหัสผ่าน'}
+            ${customMsg || 'กรุณากรอกรหัสผ่านเพื่อเข้าใช้งาน'}
           </p>
           <div style="font-size: 11px; text-align: left; background: rgba(47,91,143,0.06); border: 1px solid rgba(47,91,143,0.2); padding: 8px 12px; border-radius: 6px; color: var(--primary); margin-bottom: 10px;">
-            👑 <strong>Admin Token:</strong> เข้าถึงได้ทั้งหมด 100%<br>
-            👤 <strong>Sales Token:</strong> เข้าอ่านและพิมพ์รีพอร์ตเซลล์ (ไม่อนุญาตให้ลบเคส)
+            👑 <strong>Admin:</strong> เข้าถึงได้ทั้งหมด<br>
+            👤 <strong>Sales:</strong> อ่าน + พิมพ์รีพอร์ตเซลล์ (ลบเคสไม่ได้)
           </div>
         `,
         input: 'password',
-        inputPlaceholder: 'กรอก Admin หรือ Sales Token...',
-        inputValue: getStoredToken(),
+        inputPlaceholder: 'รหัสผ่าน',
         showCancelButton: false,
         allowOutsideClick: false,
         allowEscapeKey: false,
         confirmButtonColor: 'var(--primary)',
-        confirmButtonText: 'เข้าสู่ระบบ (Login)',
-        inputValidator: (val) => {
-          if (!val) return 'กรุณากรอกรหัสผ่านหรือ Secret Token ก่อนเข้าใช้งาน';
-        }
+        confirmButtonText: 'เข้าสู่ระบบ',
+        inputValidator: (val) => { if (!val) return 'กรุณากรอกรหัสผ่าน'; }
       });
 
       isPromptingLogin = false;
 
-      if (token) {
+      if (password) {
         try {
           const res = await fetch('/api/webhooks/pancake?action=login', {
             method: 'POST',
             credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Pancake-Secret': token.trim()
-            },
-            body: JSON.stringify({ token: token.trim() })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: password.trim() })
           });
           const data = await res.json();
           if (res.ok && data.success) {
-            setStoredToken(token.trim());
-            currentUserRole = data.role || 'admin';
-            applyRolePermissions(currentUserRole);
-            Swal.fire({ 
-              icon: 'success', 
-              title: `ยินดีต้อนรับ (${currentUserRole === 'admin' ? '👑 ผู้ดูแลระบบ' : '👤 ฝ่ายขาย'})`, 
-              timer: 1500, 
-              showConfirmButton: false 
+            currentUserRole = data.role;
+            applyRolePermissions(data.role);
+            Swal.fire({
+              icon: 'success',
+              title: `ยินดีต้อนรับ (${data.role === 'admin' ? '👑 ผู้ดูแลระบบ' : '👤 ฝ่ายขาย'})`,
+              timer: 1400,
+              showConfirmButton: false
             });
             startPolling();
             initData();
           } else {
-            promptLoginModal('❌ รหัสผ่าน / Token ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง');
+            promptLoginModal('❌ รหัสผ่านไม่ถูกต้อง ลองใหม่อีกครั้ง');
           }
         } catch(err) {
-          promptLoginModal('❌ เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + err.message);
+          promptLoginModal('❌ เชื่อมต่อไม่ได้: ' + err.message);
         }
       }
     }
 
     async function logoutCRM() {
       stopPolling();
-      localStorage.removeItem('pancake_auth_token');
+      currentUserRole = null;
       await fetch('/api/webhooks/pancake?action=logout', { method: 'POST', credentials: 'include' });
       Swal.fire({
         icon: 'info',
@@ -1606,41 +1603,35 @@
           roleBadge.style.background = 'rgba(16, 185, 129, 0.15)';
           roleBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
           roleBadge.style.color = 'var(--success)';
-        } else {
+        } else if (role === 'sales') {
           roleBadge.innerHTML = '👤 Sales';
           roleBadge.style.background = 'rgba(47, 91, 143, 0.15)';
           roleBadge.style.borderColor = 'rgba(47, 91, 143, 0.4)';
           roleBadge.style.color = 'var(--primary)';
+        } else {
+          roleBadge.innerHTML = '…';
         }
       }
 
-      // Hide or disable admin-only controls for Sales role
-      const adminOnlyElements = document.querySelectorAll('.admin-only');
-      adminOnlyElements.forEach(el => {
+      // admin-only controls are visible only to admins
+      document.querySelectorAll('.admin-only').forEach(el => {
         el.style.display = role === 'admin' ? '' : 'none';
       });
     }
 
     async function fetchWithAuth(url, options = {}) {
-      const token = getStoredToken();
-      const headers = {
-        ...(options.headers || {}),
-        'X-Pancake-Secret': token
-      };
-
       try {
         const res = await fetch(url, {
           ...options,
-          headers,
-          credentials: 'include' // Sends httpOnly Cookie automatically
+          credentials: 'include' // httpOnly session cookie
         });
 
         if (res.status === 401) {
           stopPolling();
-          console.warn('⚠️ 401 Unauthorized');
+          currentUserRole = null;
           showSaveIndicator('⚠️ กรุณาเข้าสู่ระบบ');
           if (!isPromptingLogin) {
-            promptLoginModal('เซสชันหมดอายุหรือยังไม่ได้เข้าสู่ระบบ กรุณากรอก Token');
+            promptLoginModal('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
           }
           return null;
         }
@@ -2786,12 +2777,11 @@ ${adSection}━━━━━━━━━━━━━━━━━━
 
 
     function copyWebhookUrl() {
-      const token = getStoredToken();
-      const url = `${window.location.origin}/api/webhooks/pancake?secret=${encodeURIComponent(token)}`;
+      const url = `${window.location.origin}/api/webhooks/pancake`;
       navigator.clipboard.writeText(url).then(() => {
         Swal.fire({
-          title: 'คัดลอก Webhook URL (พร้อม Token) แล้ว!',
-          html: `<p style="font-size: 13px; color: var(--text-muted);">นำ URL ด้านล่างไปใส่ใน <strong>PanCake Settings > Webhook</strong>:</p><br><code style="color: var(--primary); background: var(--soft); padding: 8px 12px; border-radius: 6px; word-break: break-all;">${url}</code><br><br><small style="color: #4ade80;">✓ มี Secret Token กำกับความปลอดภัยเรียบร้อย</small>`,
+          title: 'คัดลอก Webhook URL แล้ว!',
+          html: `<p style="font-size: 13px; color: var(--text-muted);">นำ URL ด้านล่างไปใส่ใน <strong>PanCake Settings > Webhook</strong>:</p><br><code style="color: var(--primary); background: var(--soft); padding: 8px 12px; border-radius: 6px; word-break: break-all;">${url}</code>`,
           icon: 'success',
           confirmButtonColor: 'var(--primary)'
         });
@@ -3273,8 +3263,12 @@ ${adSection}━━━━━━━━━━━━━━━━━━
 
     // Auto init
     window.addEventListener('DOMContentLoaded', () => {
-      initData();
-      startPolling();
+      ensureAuth().then((ok) => {
+        if (ok) {
+          initData();
+          startPolling();
+        }
+      });
 
       // Close modal on click outside or ESC
 
