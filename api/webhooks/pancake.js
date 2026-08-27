@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.28.6';
+const APP_VERSION = '2026.08.28.7';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1526,6 +1526,8 @@ module.exports = async (req, res) => {
       const target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
       if (target) {
         if (payload.lead.report !== undefined) target.report = payload.lead.report;
+        if (payload.lead.teamLeadReport !== undefined) target.teamLeadReport = payload.lead.teamLeadReport;
+        if (payload.lead.closed !== undefined) target.closed = payload.lead.closed;
         if (payload.lead.sales !== undefined) target.sales = payload.lead.sales;
         if (payload.lead.truck !== undefined) target.truck = payload.lead.truck;
         if (payload.lead.date !== undefined) target.date = payload.lead.date;

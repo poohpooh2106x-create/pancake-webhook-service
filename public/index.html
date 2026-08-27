@@ -713,7 +713,7 @@
         <span style="color: var(--border-light);">|</span>
         <span id="lastSyncTimeText">🟢 ซิงค์ล่าสุด: กำลังโหลด...</span>
         <span style="color: var(--border-light);">|</span>
-        <span id="appVersionBadge" style="background: var(--soft); border: 1px solid var(--border); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.28.6</span>
+        <span id="appVersionBadge" style="background: var(--soft); border: 1px solid var(--border); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.28.7</span>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span id="saveIndicator" style="color: var(--success); font-size: 11px; transition: opacity 0.3s; opacity: 0.8;"></span>
@@ -827,7 +827,8 @@
               <th>📢 ชื่อแอด</th>
               <th>เซลล์ที่รับ</th>
               <th style="min-width: 220px;">📝 รีพอร์ตจากเซลล์ / บันทึกผล</th>
-              <th style="text-align: center;">ส่งต่อ / จัดการ</th>
+              <th style="min-width: 200px;">📋 รีพอร์ตหัวหน้าทีม</th>
+              <th style="text-align: center;">ส่งต่อ / ปิดเคส</th>
             </tr>
           </thead>
           <tbody id="leadsTableBody">
@@ -1474,7 +1475,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.08.28.6';
+    const APP_VERSION = '2026.08.28.7';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
@@ -2141,7 +2142,7 @@
         if (filtered.length === 0) {
           tbody.innerHTML = `
             <tr>
-              <td colspan="10" class="empty-state" style="text-align: center; padding: 30px; color: var(--text-muted);">
+              <td colspan="11" class="empty-state" style="text-align: center; padding: 30px; color: var(--text-muted);">
                 📭 ยังไม่มีข้อมูลเคสลูกค้าที่ตรงกับเงื่อนไข<br>
                 <span style="font-size: 11px; color: var(--faint);">(เมื่อ PanCake ส่ง Webhook เข้ามา หรือกดเลือกแท็บ "ทั้งหมด" ข้อมูลจะแสดงตรงนี้)</span>
               </td>
@@ -2173,9 +2174,12 @@
           const leadAd = escapeHtml(lead.ad ? String(lead.ad) : '');
           const leadSales = lead.sales || '';
           const leadReport = escapeHtml(lead.report || '');
+          const tlReport = escapeHtml(lead.teamLeadReport || '');
+          const leadClosed = lead.closed === 'won' || lead.closed === 'lost' ? lead.closed : '';
+          const isAdmin = currentUserRole === 'admin';
 
           return `
-            <tr>
+            <tr style="${leadClosed ? 'opacity: 0.55;' : ''}">
               <td>${leadDate}</td>
               <td style="color: var(--text-muted);">${leadTime}</td>
               <td>
@@ -2203,9 +2207,9 @@
                 </select>
               </td>
               <td>
-                <input type="text" class="input-report" 
-                       value="${leadReport}" 
-                       placeholder="📝 พิมพ์รีพอร์ต เช่น สนใจเข้ามาดู..." 
+                <input type="text" class="input-report"
+                       value="${leadReport}"
+                       placeholder="📝 พิมพ์รีพอร์ต เช่น สนใจเข้ามาดู..."
                        oninput="updateLeadReport(${realIdx}, this.value)"
                        onchange="updateLeadReport(${realIdx}, this.value)"
                        style="background: var(--wash); border: 1px solid var(--border-light); border-radius: 6px; color: var(--text); padding: 6px 10px; font-size: 12px; width: 100%; min-width: 200px; outline: none; transition: border-color 0.2s, background 0.2s;"
@@ -2213,15 +2217,32 @@
                        onblur="this.style.borderColor='var(--border-light)'; this.style.background='var(--wash)';"
                 >
               </td>
+              <td>
+                ${isAdmin ? `
+                  <input type="text"
+                         value="${tlReport}"
+                         placeholder="📋 บันทึกจากหัวหน้าทีม..."
+                         oninput="updateLeadTeamReport(${realIdx}, this.value)"
+                         onchange="updateLeadTeamReport(${realIdx}, this.value)"
+                         style="background: rgba(109,40,217,0.06); border: 1px solid var(--border-light); border-radius: 6px; color: var(--text); padding: 6px 10px; font-size: 12px; width: 100%; min-width: 180px; outline: none; transition: border-color 0.2s;"
+                         onfocus="this.style.borderColor='var(--purple)';"
+                         onblur="this.style.borderColor='var(--border-light)';"
+                  >
+                ` : `<span style="font-size: 12px; color: var(--text-2);">${tlReport || '<span style=&quot;color:var(--faint)&quot;>-</span>'}</span>`}
+              </td>
               <td style="text-align: center; white-space: nowrap;">
                 <button class="btn-line-send" onclick="sendToLine(${realIdx})" title="ส่งข้อมูลให้เซลล์ทาง LINE">
                   🟢 ส่ง LINE
                 </button>
-                ${currentUserRole === 'admin' ? `
-                  <button class="btn-del-row" onclick="deleteLead(${realIdx})" title="ลบเคสนี้">
+                ${isAdmin ? `
+                  <button onclick="updateLeadClosed(${realIdx}, 'won')" title="ปิดการขาย (ขายได้)"
+                    style="border: 1px solid ${leadClosed === 'won' ? '#10b981' : 'var(--border-light)'}; background: ${leadClosed === 'won' ? '#10b981' : 'transparent'}; color: ${leadClosed === 'won' ? '#fff' : 'var(--success)'}; border-radius: 6px; padding: 4px 8px; font-size: 13px; cursor: pointer; margin-left: 4px;">✓</button>
+                  <button onclick="updateLeadClosed(${realIdx}, 'lost')" title="ปิดเคส (ไม่ได้)"
+                    style="border: 1px solid ${leadClosed === 'lost' ? 'var(--danger)' : 'var(--border-light)'}; background: ${leadClosed === 'lost' ? 'var(--danger)' : 'transparent'}; color: ${leadClosed === 'lost' ? '#fff' : 'var(--danger)'}; border-radius: 6px; padding: 4px 8px; font-size: 13px; cursor: pointer; margin-left: 3px;">✗</button>
+                  <button class="btn-del-row" onclick="deleteLead(${realIdx})" title="ลบเคสนี้" style="margin-left: 4px;">
                     🗑️
                   </button>
-                ` : ''}
+                ` : `${leadClosed === 'won' ? '<span style="color: var(--success); font-weight: 600; margin-left: 6px;">✓ ปิดการขาย</span>' : leadClosed === 'lost' ? '<span style="color: var(--danger); font-weight: 600; margin-left: 6px;">✗ ปิดเคส</span>' : ''}`}
               </td>
             </tr>
           `;
@@ -2246,6 +2267,26 @@
         saveLeadState(leads[idx]);
         showSaveIndicator('บันทึกรีพอร์ตเซลล์แล้ว 💾');
       }
+    }
+
+    // รีพอร์ตหัวหน้าทีม — admin only
+    function updateLeadTeamReport(idx, val) {
+      if (currentUserRole !== 'admin' || !leads[idx]) return;
+      leads[idx].teamLeadReport = val;
+      saveLeadState(leads[idx]);
+      showSaveIndicator('บันทึกรีพอร์ตหัวหน้าทีมแล้ว 📋');
+    }
+
+    // ปิดเคส (✓ ปิดการขาย / ✗ ปิดเคสไม่ได้) — admin only; กดซ้ำเพื่อยกเลิก
+    function updateLeadClosed(idx, status) {
+      if (currentUserRole !== 'admin' || !leads[idx]) return;
+      leads[idx].closed = (leads[idx].closed === status) ? '' : status;
+      saveLeadState(leads[idx]);
+      renderMetrics();
+      renderTable();
+      const label = leads[idx].closed === 'won' ? 'ปิดการขาย ✓'
+                  : leads[idx].closed === 'lost' ? 'ปิดเคส ✗' : 'เปิดเคสอีกครั้ง';
+      showSaveIndicator(label + ' แล้ว');
     }
 
     function sanitizeChannelName(source) {
@@ -2437,8 +2478,9 @@
       }
 
       let csv = '\uFEFF'; // BOM for Thai Excel
-      csv += 'วันที่,เวลา,ที่มา (Channel),ชื่อแอด/คลิป,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,เซลล์ที่รับผิดชอบ,รีพอร์ตจากเซลล์\n';
+      csv += 'วันที่,เวลา,ที่มา (Channel),ชื่อแอด/คลิป,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,เซลล์ที่รับผิดชอบ,รีพอร์ตจากเซลล์,รีพอร์ตหัวหน้าทีม,สถานะปิดเคส\n';
 
+      const closedLabel = (c) => c === 'won' ? 'ปิดการขาย' : c === 'lost' ? 'ปิดเคส (ไม่ได้)' : '';
       leads.forEach(l => {
         const row = [
           `"${l.date || ''}"`,
@@ -2449,7 +2491,9 @@
           `"${l.phone || ''}"`,
           `"${(l.truck || 'ยังไม่ระบุ').replace(/"/g, '""')}"`,
           `"${(l.sales || '').replace(/"/g, '""')}"`,
-          `"${(l.report || '').replace(/"/g, '""')}"`
+          `"${(l.report || '').replace(/"/g, '""')}"`,
+          `"${(l.teamLeadReport || '').replace(/"/g, '""')}"`,
+          `"${closedLabel(l.closed)}"`
         ];
         csv += row.join(',') + '\n';
       });
@@ -2725,12 +2769,18 @@
 
       const adSection = adLines ? `\n📢 *แอดที่ทำผลงาน:*\n${adLines}\n` : '';
 
-      const reportText = 
+      const wonCount = filtered.filter(l => l.closed === 'won').length;
+      const lostCount = filtered.filter(l => l.closed === 'lost').length;
+      const closeSection = (wonCount || lostCount)
+        ? `\n🏁 *ปิดเคส:* ✓ ปิดการขาย ${wonCount} · ✗ ไม่ได้ ${lostCount}\n` : '';
+
+      const reportText =
 `📊 *รายงานสรุปการแจกเคสลูกค้า ${periodLabel}*
 ━━━━━━━━━━━━━━━━━━
 📞 *ยอดเคสได้เบอร์ทั้งหมด:* ${total} เคส
 ✅ จ่ายงานแล้ว: ${assigned} เคส
 ⏰ รอเลือกเซลล์: ${pending} เคส
+${closeSection}
 
 👥 *สรุปการกระจายงานให้เซลล์:*
 ${salesLines}
