@@ -638,7 +638,7 @@
         <span style="color: #475569;">|</span>
         <span id="lastSyncTimeText">🟢 ซิงค์ล่าสุด: กำลังโหลด...</span>
         <span style="color: #475569;">|</span>
-        <span id="appVersionBadge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.27.2</span>
+        <span id="appVersionBadge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.27.3</span>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span id="saveIndicator" style="color: #34d399; font-size: 11px; transition: opacity 0.3s; opacity: 0.8;"></span>
@@ -1078,6 +1078,13 @@
     const TRUCKS_STORAGE_KEY = 'pancake_truck_types_v5';
     let truckTypes = [...DEFAULT_TRUCKS];
 
+    // Last-edit timestamps: a stale server/cloud copy must not resurrect a
+    // truck type / channel the user just removed. The newer copy always wins.
+    const TRUCKS_TS_KEY = 'pancake_truck_types_updated_at';
+    const CHANNELS_TS_KEY = 'pancake_channels_updated_at';
+    function getListTs(key) { const v = parseInt(localStorage.getItem(key) || '0', 10); return isNaN(v) ? 0 : v; }
+    function setListTs(key, ts) { try { localStorage.setItem(key, String(ts || Date.now())); } catch (e) {} }
+
     // STATE & BULLETPROOF PERSISTENCE ENGINE
     const MASTER_LEADS_KEY = 'pancake_crm_master_leads';
     const BACKUP_LEADS_KEY = 'pancake_crm_permanent_backup';
@@ -1120,6 +1127,8 @@
     }
 
     function saveTruckTypes() {
+      const ts = Date.now();
+      setListTs(TRUCKS_TS_KEY, ts);
       try {
         localStorage.setItem(TRUCKS_STORAGE_KEY, JSON.stringify(truckTypes));
         localStorage.setItem('pancake_truck_types_master', JSON.stringify(truckTypes));
@@ -1136,7 +1145,7 @@
         fetchWithAuth('/api/webhooks/pancake?action=sync_trucks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ truckTypes }),
+          body: JSON.stringify({ truckTypes, truckTypesUpdatedAt: ts }),
           keepalive: true
         });
       } catch(e) {}
@@ -1239,6 +1248,8 @@
     }
 
     function saveChannelSources() {
+      const ts = Date.now();
+      setListTs(CHANNELS_TS_KEY, ts);
       try {
         localStorage.setItem(CHANNELS_STORAGE_KEY, JSON.stringify(channelSources));
         localStorage.setItem('pancake_channel_sources_master', JSON.stringify(channelSources));
@@ -1254,7 +1265,7 @@
         fetchWithAuth('/api/webhooks/pancake?action=sync_channels', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ channelSources }),
+          body: JSON.stringify({ channelSources, channelsUpdatedAt: ts }),
           keepalive: true
         });
       } catch(e) {}
@@ -1370,7 +1381,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.08.27.2';
+    const APP_VERSION = '2026.08.27.3';
     let lastSyncTimestamp = 0;
     const DEFAULT_ADMIN_TOKEN = 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
     let currentUserRole = 'admin'; // 'admin' | 'sales'
@@ -1753,15 +1764,19 @@
             updateAll();
           }
 
-          if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
+          // Only accept the server's list if it is at least as new as ours,
+          // otherwise a deleted truck type / channel would come back on reload.
+          if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0 && (Number(data.truckTypesUpdatedAt) || 0) >= getListTs(TRUCKS_TS_KEY)) {
             truckTypes = [...data.truckTypes];
             localStorage.setItem(TRUCKS_STORAGE_KEY, JSON.stringify(truckTypes));
+            setListTs(TRUCKS_TS_KEY, Number(data.truckTypesUpdatedAt) || getListTs(TRUCKS_TS_KEY));
             populateTruckSelectInputs();
             renderTruckTypesList();
           }
-          if (Array.isArray(data.channelSources) && data.channelSources.length > 0) {
+          if (Array.isArray(data.channelSources) && data.channelSources.length > 0 && (Number(data.channelsUpdatedAt) || 0) >= getListTs(CHANNELS_TS_KEY)) {
             channelSources = [...data.channelSources];
             localStorage.setItem(CHANNELS_STORAGE_KEY, JSON.stringify(channelSources));
+            setListTs(CHANNELS_TS_KEY, Number(data.channelsUpdatedAt) || getListTs(CHANNELS_TS_KEY));
             populateChannelInputs();
             renderChannelFilterTabs();
           }
@@ -1817,7 +1832,7 @@
           fetchWithAuth('/api/webhooks/pancake?action=sync_state', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ leads, truckTypes, channelSources, deletedIds })
+            body: JSON.stringify({ leads, truckTypes, channelSources, deletedIds, truckTypesUpdatedAt: getListTs(TRUCKS_TS_KEY), channelsUpdatedAt: getListTs(CHANNELS_TS_KEY) })
           });
         } catch(e) {}
       }
@@ -1958,7 +1973,7 @@
         fetchWithAuth('/api/webhooks/pancake?action=sync_state', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ leads, truckTypes, channelSources, lead })
+          body: JSON.stringify({ leads, truckTypes, channelSources, lead, truckTypesUpdatedAt: getListTs(TRUCKS_TS_KEY), channelsUpdatedAt: getListTs(CHANNELS_TS_KEY) })
         });
       } catch(e) {}
 
@@ -2832,21 +2847,24 @@ ${adSection}━━━━━━━━━━━━━━━━━━
           latestServerLogs = data.webhookLogs;
         }
 
-        // Sync custom truck types & channels from cloud
-        if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0) {
+        // Sync custom truck types & channels from cloud — but never let an
+        // older server copy override a list the user just edited on this device.
+        if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0 && (Number(data.truckTypesUpdatedAt) || 0) >= getListTs(TRUCKS_TS_KEY)) {
           const serverTrucks = data.truckTypes;
           if (JSON.stringify(truckTypes) !== JSON.stringify(serverTrucks)) {
             truckTypes = [...serverTrucks];
             localStorage.setItem(TRUCKS_STORAGE_KEY, JSON.stringify(truckTypes));
+            setListTs(TRUCKS_TS_KEY, Number(data.truckTypesUpdatedAt) || getListTs(TRUCKS_TS_KEY));
             populateTruckSelectInputs();
             renderTruckTypesList();
           }
         }
-        if (Array.isArray(data.channelSources) && data.channelSources.length > 0) {
+        if (Array.isArray(data.channelSources) && data.channelSources.length > 0 && (Number(data.channelsUpdatedAt) || 0) >= getListTs(CHANNELS_TS_KEY)) {
           const serverChannels = data.channelSources;
           if (JSON.stringify(channelSources) !== JSON.stringify(serverChannels)) {
             channelSources = [...serverChannels];
             localStorage.setItem(CHANNELS_STORAGE_KEY, JSON.stringify(channelSources));
+            setListTs(CHANNELS_TS_KEY, Number(data.channelsUpdatedAt) || getListTs(CHANNELS_TS_KEY));
             populateChannelInputs();
             renderChannelFilterTabs();
           }

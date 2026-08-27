@@ -6,7 +6,7 @@ const { google } = require('googleapis');
 const https = require('https');
 
 // Dedicated Cloud Storage ID for Multi-Device Global Sync
-const APP_VERSION = '2026.08.27.2';
+const APP_VERSION = '2026.08.27.3';
 const CLOUD_OBJECT_ID = 'ff8081819ff5b11001a03c0bbbae2203';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 
@@ -402,6 +402,11 @@ let memoryLeads = [...DEFAULT_MASTER_LEADS];
 let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'เครน', 'โดยสาร', 'คอก', 'รถน้ำ', 'ถังน้ำขี้', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
 let memoryChannels = ['FB เคพีศรีราชา', 'TikTok', 'LOA เคพี', 'FB เฮียตั้มรถติด', 'Marketplace', 'อื่นๆ'];
 let memoryDeletedIds = [];
+// Last-edit timestamps for the customizable lists. A stale copy (lagging cloud,
+// another warm instance) must never resurrect a truck type / channel the user
+// just deleted, so we only accept an incoming list if it is newer.
+let memoryTruckTypesUpdatedAt = 0;
+let memoryChannelsUpdatedAt = 0;
 let webhookLogs = [];
 const dedupeCache = new Map();
 
@@ -813,11 +818,18 @@ function fetchCloudData() {
               }
             }
 
-            if (Array.isArray(json.data.truckTypes) && json.data.truckTypes.length > 0) {
+            // Only take the cloud copy of a customizable list when it is at least
+            // as new as what we already hold - otherwise a lagging cloud write
+            // would undo a deletion the user just made.
+            const cloudTruckTs = Number(json.data.truckTypesUpdatedAt) || 0;
+            if (Array.isArray(json.data.truckTypes) && json.data.truckTypes.length > 0 && cloudTruckTs >= memoryTruckTypesUpdatedAt) {
               memoryTruckTypes = json.data.truckTypes;
+              memoryTruckTypesUpdatedAt = cloudTruckTs;
             }
-            if (Array.isArray(json.data.channels) && json.data.channels.length > 0) {
+            const cloudChannelTs = Number(json.data.channelsUpdatedAt) || 0;
+            if (Array.isArray(json.data.channels) && json.data.channels.length > 0 && cloudChannelTs >= memoryChannelsUpdatedAt) {
               memoryChannels = json.data.channels;
+              memoryChannelsUpdatedAt = cloudChannelTs;
             }
             if (Array.isArray(json.data.deletedIds)) {
               for (const d of json.data.deletedIds) {
@@ -924,6 +936,8 @@ async function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList
       recentLeads: memoryLeads.slice(0, 3),
       truckTypes: memoryTruckTypes,
       channels: memoryChannels,
+      truckTypesUpdatedAt: memoryTruckTypesUpdatedAt,
+      channelsUpdatedAt: memoryChannelsUpdatedAt,
       deletedIds: memoryDeletedIds.slice(-100),
       updatedAt: Date.now()
     }
@@ -940,6 +954,8 @@ async function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList
       recentLeads: memoryLeads.slice(0, 3),
       truckTypes: memoryTruckTypes,
       channels: memoryChannels,
+      truckTypesUpdatedAt: memoryTruckTypesUpdatedAt,
+      channelsUpdatedAt: memoryChannelsUpdatedAt,
       deletedIds: memoryDeletedIds.slice(-20),
       updatedAt: Date.now()
     }
@@ -1271,6 +1287,8 @@ module.exports = async (req, res) => {
       truckTypes: memoryTruckTypes,
       channelSources: memoryChannels,
       channels: memoryChannels,
+      truckTypesUpdatedAt: memoryTruckTypesUpdatedAt,
+      channelsUpdatedAt: memoryChannelsUpdatedAt,
       deletedIds: memoryDeletedIds,
       webhookLogs: webhookLogs.slice(0, 50),
       securityAuditLogs: effectiveRole === 'admin' ? securityAuditLogs.slice(0, 30) : [],
@@ -1310,22 +1328,25 @@ module.exports = async (req, res) => {
     return res.status(200).json({ success: true, message: 'Lead deleted permanently', totalLeads: memoryLeads.length, deletedIds: memoryDeletedIds });
   }
 
-  // PUT / POST with sync action: Save state from frontend
+  // PUT / POST with sync action: Save state from frontend.
+  // An explicit list edit always wins and bumps the last-edit timestamp.
   if (action === 'sync_trucks') {
     if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) {
       memoryTruckTypes = payload.truckTypes;
+      memoryTruckTypesUpdatedAt = Number(payload.truckTypesUpdatedAt) || Date.now();
       await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
       recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_truck_types');
-      return res.status(200).json({ success: true, message: 'Truck types updated', truckTypes: memoryTruckTypes });
+      return res.status(200).json({ success: true, message: 'Truck types updated', truckTypes: memoryTruckTypes, truckTypesUpdatedAt: memoryTruckTypesUpdatedAt });
     }
   }
 
   if (action === 'sync_channels') {
     if (Array.isArray(payload?.channelSources) && payload.channelSources.length > 0) {
       memoryChannels = payload.channelSources;
+      memoryChannelsUpdatedAt = Number(payload.channelsUpdatedAt) || Date.now();
       await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
       recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_channel_sources');
-      return res.status(200).json({ success: true, message: 'Channel sources updated', channelSources: memoryChannels });
+      return res.status(200).json({ success: true, message: 'Channel sources updated', channelSources: memoryChannels, channelsUpdatedAt: memoryChannelsUpdatedAt });
     }
   }
 
@@ -1337,8 +1358,17 @@ module.exports = async (req, res) => {
       }
     }
 
-    if (Array.isArray(payload?.channelSources) && payload.channelSources.length > 0) {
+    // Customizable lists: only accept when the client's copy is newer, so a
+    // stale device syncing a lead edit cannot resurrect a deleted entry.
+    const stateChannelTs = Number(payload?.channelsUpdatedAt) || 0;
+    if (Array.isArray(payload?.channelSources) && payload.channelSources.length > 0 && stateChannelTs >= memoryChannelsUpdatedAt) {
       memoryChannels = payload.channelSources;
+      memoryChannelsUpdatedAt = stateChannelTs || memoryChannelsUpdatedAt;
+    }
+    const stateTruckTs = Number(payload?.truckTypesUpdatedAt) || 0;
+    if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0 && stateTruckTs >= memoryTruckTypesUpdatedAt) {
+      memoryTruckTypes = payload.truckTypes;
+      memoryTruckTypesUpdatedAt = stateTruckTs || memoryTruckTypesUpdatedAt;
     }
 
     // RBAC: Role-Based Access Control
@@ -1386,7 +1416,7 @@ module.exports = async (req, res) => {
         sheetSyncTarget = payload.lead;
       }
     }
-    if (Array.isArray(payload?.truckTypes) && payload.truckTypes.length > 0) memoryTruckTypes = payload.truckTypes;
+    // truckTypes / channels already handled above with timestamp gating
     // Persist the shared cloud state FIRST (critical path for multi-device sync);
     // Google Sheets is best-effort and must never block or pre-empt the cloud write.
     await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);

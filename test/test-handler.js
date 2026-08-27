@@ -53,7 +53,7 @@ async function runAllTests() {
     await pancakeHandler(req, res);
     assert.strictEqual(resData.statusCode, 200, 'GET should return 200');
     assert.strictEqual(resData.body.status, 'online', 'Status should be online');
-    assert.strictEqual(resData.body.appVersion, '2026.08.27.2', 'App version must match');
+    assert.strictEqual(resData.body.appVersion, '2026.08.27.3', 'App version must match');
     assert.ok(typeof resData.body.serverTimestamp === 'number', 'Server timestamp must be present');
     assert.ok(resData.headers['cache-control']?.includes('no-cache'), 'Cache-Control header must be set to no-cache');
     assert.ok(Array.isArray(resData.body.leads), 'Leads should be an array');
@@ -256,6 +256,29 @@ async function runAllTests() {
     assert.strictEqual(resData.body.success, true);
     assert.deepStrictEqual(resData.body.channelSources, customChannels);
     console.log('✅ Test 11 Passed: Custom channel sources dynamic sync & persistence');
+  }
+
+  // Test 13: Deleted truck type must not be resurrected by an older sync
+  {
+    const admin = { 'x-pancake-secret': 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e' };
+    const trimmed = ['หัวลาก', 'ตู้10', 'หาง'];
+    const newTs = Date.now();
+
+    // User removes several truck types (fresh timestamp)
+    let m = createMockReqRes({ method: 'POST', query: { action: 'sync_trucks' }, headers: admin,
+      body: { truckTypes: trimmed, truckTypesUpdatedAt: newTs } });
+    await pancakeHandler(m.req, m.res);
+    assert.deepStrictEqual(m.res && m.resData.body.truckTypes, trimmed, 'sync_trucks should apply the trimmed list');
+
+    // A stale device echoes the old long list with an older timestamp
+    m = createMockReqRes({ method: 'POST', query: { action: 'sync_state' }, headers: admin,
+      body: { leads: [], truckTypes: ['หัวลาก','ตู้10','หาง','เครน','โดยสาร','คอก','รถน้ำ','ถังน้ำขี้','ดั๊ม','6 ล้อ','อื่นๆ'], truckTypesUpdatedAt: newTs - 60000 } });
+    await pancakeHandler(m.req, m.res);
+
+    m = createMockReqRes({ method: 'GET', headers: admin });
+    await pancakeHandler(m.req, m.res);
+    assert.deepStrictEqual(m.resData.body.truckTypes, trimmed, 'older sync_state must not resurrect removed truck types');
+    console.log('✅ Test 13 Passed: Deleted truck types stay deleted against a stale sync');
   }
 
   // Test 12: Ad Title Extraction from Nested Conversation Webhook
