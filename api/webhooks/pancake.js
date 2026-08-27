@@ -6,7 +6,7 @@ const { google } = require('googleapis');
 const https = require('https');
 
 // Dedicated Cloud Storage ID for Multi-Device Global Sync
-const APP_VERSION = '2026.08.26.3';
+const APP_VERSION = '2026.08.27.1';
 const CLOUD_OBJECT_ID = 'ff8081819ff5b11001a03c0bbbae2203';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 
@@ -798,11 +798,16 @@ function fetchCloudData() {
               }
             }
 
-            // 2. Full leads fallback if available
+            // 2. Full leads list from cloud is authoritative: update existing leads
+            //    field-by-field (so edits on any device propagate) and add new ones.
             if (Array.isArray(json.data.leads)) {
               const cloudLeads = json.data.leads.filter(l => l && l.phone && l.phone !== '0812345678');
               for (const cl of cloudLeads) {
-                if (!memoryLeads.some(l => (cl.id && l.id === cl.id) || l.phone === cl.phone)) {
+                if (isBlacklistedLead(cl, memoryDeletedIds)) continue;
+                const idx = memoryLeads.findIndex(l => (cl.id && l.id === cl.id) || l.phone === cl.phone);
+                if (idx !== -1) {
+                  memoryLeads[idx] = { ...memoryLeads[idx], ...cl };
+                } else {
                   memoryLeads.unshift(cl);
                 }
               }
@@ -874,7 +879,7 @@ async function syncToGoogleSheets(data) {
   }
 }
 
-function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList, channelsList) {
+async function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList, channelsList) {
   if (Array.isArray(leadsList)) memoryLeads = sortLeadsByDate(leadsList);
   if (Array.isArray(truckTypesList)) memoryTruckTypes = truckTypesList;
   if (Array.isArray(channelsList)) memoryChannels = channelsList;
@@ -891,39 +896,55 @@ function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList, chan
     return Promise.resolve(true);
   }
 
-  return new Promise((resolve) => {
-    // Keep payload strictly under 1KB limit of restful-api.dev for guaranteed 200 OK!
-    const recentIncoming = memoryLeads.slice(0, 3);
-    const payload = JSON.stringify({
-      name: 'pancake_crm_recent_leads',
-      data: {
-        recentLeads: recentIncoming,
-        deletedIds: memoryDeletedIds.slice(-10),
-        updatedAt: Date.now()
-      }
-    });
-
+  // Persist the FULL shared state so every device sees the same leads,
+  // truck types, channels and deletions after a serverless cold start.
+  const putCloud = (payloadStr) => new Promise((resolve) => {
     const req = https.request(CLOUD_API_URL, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload)
+        'Content-Length': Buffer.byteLength(payloadStr)
       }
     }, (res) => {
-      let resBody = '';
-      res.on('data', d => resBody += d);
-      res.on('end', () => {
-        resolve(res.statusCode >= 200 && res.statusCode < 300);
-      });
+      res.on('data', () => {});
+      res.on('end', () => resolve(res.statusCode >= 200 && res.statusCode < 300));
     });
-
     req.on('error', (err) => {
       console.error('Cloud save error:', err.message);
       resolve(false);
     });
-    req.write(payload);
+    req.write(payloadStr);
     req.end();
   });
+
+  const fullPayload = JSON.stringify({
+    name: 'pancake_crm_state',
+    data: {
+      leads: memoryLeads.slice(0, 120),
+      recentLeads: memoryLeads.slice(0, 3),
+      truckTypes: memoryTruckTypes,
+      channels: memoryChannels,
+      deletedIds: memoryDeletedIds.slice(-100),
+      updatedAt: Date.now()
+    }
+  });
+
+  const ok = await putCloud(fullPayload);
+  if (ok) return true;
+
+  // Fallback: if the provider rejected the full payload (size/rate limit),
+  // still persist the critical delta so we never regress below the old behaviour.
+  const minPayload = JSON.stringify({
+    name: 'pancake_crm_state',
+    data: {
+      recentLeads: memoryLeads.slice(0, 3),
+      truckTypes: memoryTruckTypes,
+      channels: memoryChannels,
+      deletedIds: memoryDeletedIds.slice(-20),
+      updatedAt: Date.now()
+    }
+  });
+  return putCloud(minPayload);
 }
 
 
@@ -1001,6 +1022,12 @@ const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 function checkRateLimit(clientKey) {
   const now = Date.now();
+  // Prevent unbounded growth of the per-key map on long-lived warm instances
+  if (rateLimitMap.size > 5000) {
+    for (const [k, v] of rateLimitMap) {
+      if (now - v.startTime > RATE_LIMIT_WINDOW_MS) rateLimitMap.delete(k);
+    }
+  }
   let entry = rateLimitMap.get(clientKey);
   if (!entry || now - entry.startTime > RATE_LIMIT_WINDOW_MS) {
     entry = { count: 1, startTime: now };
@@ -1055,7 +1082,11 @@ function parseCookies(req) {
   rc.split(';').forEach(cookie => {
     const parts = cookie.split('=');
     const key = parts.shift()?.trim();
-    if (key) list[key] = decodeURIComponent(parts.join('=').trim());
+    if (key) {
+      const rawVal = parts.join('=').trim();
+      try { list[key] = decodeURIComponent(rawVal); }
+      catch (e) { list[key] = rawVal; }
+    }
   });
   return list;
 }
@@ -1215,7 +1246,7 @@ module.exports = async (req, res) => {
 
   // GET: Return global cloud leads, truck types & logs
   if (req.method === 'GET') {
-    await fetchCloudData();
+    // cloud state already refreshed once at the top of the handler
     const effectiveRole = authUser.role || 'admin';
     recordAuditLog(req, clientIp, effectiveRole, 200, 'read_leads');
 
@@ -1512,9 +1543,7 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Fetch latest cloud leads first
-    await fetchCloudData();
-
+    // cloud state already refreshed once at the top of the handler
     const rowsToAppend = [];
     const newLeads = [];
 

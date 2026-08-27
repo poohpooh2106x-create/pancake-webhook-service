@@ -324,6 +324,7 @@
     .badge-ma { background: #7c3aed; }
     .badge-pook { background: #dc2626; }
     .badge-fern { background: #0d9488; }
+    .badge-som { background: #db2777; }
 
     /* TABLE SECTION */
     .table-card {
@@ -638,7 +639,7 @@
         <span style="color: #475569;">|</span>
         <span id="lastSyncTimeText">🟢 ซิงค์ล่าสุด: กำลังโหลด...</span>
         <span style="color: #475569;">|</span>
-        <span id="appVersionBadge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.26.3</span>
+        <span id="appVersionBadge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.27.1</span>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span id="saveIndicator" style="color: #34d399; font-size: 11px; transition: opacity 0.3s; opacity: 0.8;"></span>
@@ -1065,6 +1066,15 @@
       return s;
     }
 
+    // Escape untrusted strings (customer name, ad title, chat text, log fields)
+    // before injecting them into innerHTML to prevent stored XSS.
+    function escapeHtml(value) {
+      if (value === undefined || value === null) return '';
+      return String(value).replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+
     // TRUCK TYPES (Customizable & Bulletproof Persistence)
     const DEFAULT_TRUCKS = ['หัวลาก', 'ตู้10', 'หาง', 'เครน', 'โดยสาร', 'คอก', 'รถน้ำ', 'ถังน้ำขี้', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
     const TRUCKS_STORAGE_KEY = 'pancake_truck_types_v5';
@@ -1208,7 +1218,7 @@
     }
 
     // CHANNEL SOURCES (Customizable & Bulletproof Persistence)
-    const DEFAULT_CHANNELS = ['FB เคพีศรีราชา', 'TikTok', 'LOA เคพี', 'FB เฮียตั้มรถติด', 'อื่นๆ'];
+    const DEFAULT_CHANNELS = ['FB เคพีศรีราชา', 'TikTok', 'LOA เคพี', 'FB เฮียตั้มรถติด', 'Marketplace', 'อื่นๆ'];
     const CHANNELS_STORAGE_KEY = 'pancake_channel_sources_v1';
     let channelSources = [...DEFAULT_CHANNELS];
 
@@ -1362,7 +1372,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.08.26.3';
+    const APP_VERSION = '2026.08.27.1';
     let lastSyncTimestamp = 0;
     const DEFAULT_ADMIN_TOKEN = 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
     let currentUserRole = 'admin'; // 'admin' | 'sales'
@@ -2050,22 +2060,22 @@
           if (lead.truck && !leadTruckList.includes(lead.truck)) {
             leadTruckList.unshift(lead.truck);
           }
-          const truckOptionsHtml = leadTruckList.map(t => `<option value="${t}" ${lead.truck === t ? 'selected' : ''}>${t}</option>`).join('');
+          const truckOptionsHtml = leadTruckList.map(t => `<option value="${escapeHtml(t)}" ${lead.truck === t ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('');
 
           let leadChannelList = Array.isArray(channelSources) ? [...channelSources] : [];
           const currentSource = sanitizeChannelName(lead.source);
           if (currentSource && !leadChannelList.includes(currentSource)) {
             leadChannelList.unshift(currentSource);
           }
-          const channelOptionsHtml = leadChannelList.map(c => `<option value="${c}" ${currentSource === c ? 'selected' : ''}>${c}</option>`).join('');
+          const channelOptionsHtml = leadChannelList.map(c => `<option value="${escapeHtml(c)}" ${currentSource === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
 
-          const leadDate = lead.date || '-';
-          const leadTime = lead.time || '-';
-          const leadName = lead.name || 'ไม่ระบุชื่อ';
-          const leadPhone = lead.phone || '-';
-          const leadAd = lead.ad ? String(lead.ad) : '';
+          const leadDate = escapeHtml(lead.date || '-');
+          const leadTime = escapeHtml(lead.time || '-');
+          const leadName = escapeHtml(lead.name || 'ไม่ระบุชื่อ');
+          const leadPhone = escapeHtml(lead.phone || '-');
+          const leadAd = escapeHtml(lead.ad ? String(lead.ad) : '');
           const leadSales = lead.sales || '';
-          const leadReport = String(lead.report || '').replace(/"/g, '&quot;');
+          const leadReport = escapeHtml(lead.report || '');
 
           return `
             <tr>
@@ -2309,7 +2319,7 @@
       navigator.clipboard.writeText(msg).then(() => {
         Swal.fire({
           title: 'คัดลอกข้อความ LINE แล้ว!',
-          html: `<div style="text-align: left; background: #0f172a; padding: 12px; border-radius: 8px; font-size: 13px; white-space: pre-wrap; font-family: monospace; color: #38bdf8;">${msg}</div>`,
+          html: `<div style="text-align: left; background: #0f172a; padding: 12px; border-radius: 8px; font-size: 13px; white-space: pre-wrap; font-family: monospace; color: #38bdf8;">${escapeHtml(msg)}</div>`,
           icon: 'success',
           confirmButtonText: 'เปิดแอพ LINE เพื่อส่ง',
           showCancelButton: true,
@@ -2497,7 +2507,7 @@
       } else {
         truckContainer.innerHTML = truckEntries.map(([t, count]) => `
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px; background: rgba(255,255,255,0.02); padding: 4px 8px; border-radius: 4px;">
-            <span style="color: #e2e8f0;">🚚 ${t}</span>
+            <span style="color: #e2e8f0;">🚚 ${escapeHtml(t)}</span>
             <span style="font-weight: 600; color: #38bdf8;">${count} เคส</span>
           </div>
         `).join('');
@@ -2512,12 +2522,14 @@
       });
       const adEntries = Object.entries(adMap).sort((a, b) => b[1] - a[1]);
       const adContainer = document.getElementById('repAdBreakdown');
-      if (adEntries.length === 0) {
+      if (!adContainer) {
+        // Ad breakdown panel is optional in the current layout
+      } else if (adEntries.length === 0) {
         adContainer.innerHTML = '<span style="color: #64748b;">ยังไม่มีข้อมูลชื่อแอดในช่วงนี้</span>';
       } else {
         adContainer.innerHTML = adEntries.slice(0, 5).map(([ad, count]) => `
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.15); padding: 4px 8px; border-radius: 4px;">
-            <span style="color: #38bdf8; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${ad}">📢 ${ad}</span>
+            <span style="color: #38bdf8; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(ad)}">📢 ${escapeHtml(ad)}</span>
             <span style="font-weight: 600; color: #38bdf8;">${count}</span>
           </div>
         `).join('');
@@ -2590,7 +2602,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
       navigator.clipboard.writeText(reportText).then(() => {
         Swal.fire({
           title: 'คัดลอกรีพอร์ตแล้ว! 📋',
-          html: `<div style="text-align: left; background: #0f172a; padding: 12px; border-radius: 8px; font-size: 12px; white-space: pre-wrap; font-family: monospace; color: #38bdf8;">${reportText}</div>`,
+          html: `<div style="text-align: left; background: #0f172a; padding: 12px; border-radius: 8px; font-size: 12px; white-space: pre-wrap; font-family: monospace; color: #38bdf8;">${escapeHtml(reportText)}</div>`,
           icon: 'success',
           confirmButtonText: 'เปิดแอพ LINE เพื่อส่ง',
           showCancelButton: true,
@@ -2974,8 +2986,8 @@ ${adSection}━━━━━━━━━━━━━━━━━━
         if (data.webhookLogs && data.webhookLogs.length > 0) {
           container.innerHTML = data.webhookLogs.map((item, idx) => `
             <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px; margin-bottom: 8px;">
-              <span style="color: #4ade80;">[#${idx+1}] ⏰ ${item.timestamp}</span><br>
-              <pre style="color: #cbd5e1; font-size: 11px; margin-top: 4px; overflow-x: auto;">${JSON.stringify(item.payload, null, 2)}</pre>
+              <span style="color: #4ade80;">[#${idx+1}] ⏰ ${escapeHtml(item.timestamp)}</span><br>
+              <pre style="color: #cbd5e1; font-size: 11px; margin-top: 4px; overflow-x: auto;">${escapeHtml(JSON.stringify(item.payload, null, 2))}</pre>
             </div>
           `).join('');
         } else {
@@ -3007,15 +3019,15 @@ ${adSection}━━━━━━━━━━━━━━━━━━
             <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px; margin-bottom: 8px;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span style="color: ${item.statusCode === 200 ? '#4ade80' : (item.statusCode === 429 ? '#fbbf24' : '#f87171')}; font-weight: 600;">
-                  [#${idx+1}] [${item.method}] ${item.statusCode} (${item.role})
+                  [#${idx+1}] [${escapeHtml(item.method)}] ${escapeHtml(item.statusCode)} (${escapeHtml(item.role)})
                 </span>
-                <span style="color: #94a3b8; font-size: 11px;">⏰ ${item.timestamp}</span>
+                <span style="color: #94a3b8; font-size: 11px;">⏰ ${escapeHtml(item.timestamp)}</span>
               </div>
               <div style="color: #cbd5e1; font-size: 11px; margin-top: 4px;">
-                🌐 IP: <strong style="color: #38bdf8;">${item.ip}</strong> | Action: <strong style="color: #facc15;">${item.action}</strong> | Token: <code>${item.token}</code>
+                🌐 IP: <strong style="color: #38bdf8;">${escapeHtml(item.ip)}</strong> | Action: <strong style="color: #facc15;">${escapeHtml(item.action)}</strong> | Token: <code>${escapeHtml(item.token)}</code>
               </div>
               <div style="color: #64748b; font-size: 10px; margin-top: 2px;">
-                Path: ${item.path} | UA: ${item.userAgent}
+                Path: ${escapeHtml(item.path)} | UA: ${escapeHtml(item.userAgent)}
               </div>
             </div>
           `).join('');
