@@ -6,7 +6,7 @@ const { google } = require('googleapis');
 const https = require('https');
 
 // Dedicated Cloud Storage ID for Multi-Device Global Sync
-const APP_VERSION = '2026.08.27.8';
+const APP_VERSION = '2026.08.27.9';
 const CLOUD_OBJECT_ID = 'ff8081819ff5b11001a03c0bbbae2203';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 
@@ -737,21 +737,62 @@ function extractAdSource(payload) {
     }
   }
 
+  // 2b. PanCake "recent ad" the customer messaged in from — object OR array,
+  //     found at many roots (conversation.recent_ad, customer.current_ads, ...)
+  const cleanAdStr = (v) => {
+    if (!v || typeof v !== 'string') return '';
+    const s = v.trim().replace(/\s+/g, ' ');
+    if (!s || /^[-0-9,\s_]+$/.test(s)) return '';
+    return s.length > 90 ? s.slice(0, 90).trim() + '…' : s;
+  };
+  const adBuckets = [
+    payload.recent_ad, payload.recent_ads, payload.ads, payload.ad,
+    payload.conversation?.recent_ad, payload.conversation?.ads,
+    payload.data?.recent_ad, payload.data?.recent_ads, payload.data?.ads,
+    payload.data?.conversation?.recent_ad, payload.data?.conversation?.recent_ads,
+    payload.data?.conversation?.ads, payload.data?.conversation?.ads_sources,
+    payload.data?.page_customer?.recent_ad, payload.data?.page_customer?.ads,
+    payload.customer?.recent_ad, payload.customer?.current_ads, payload.customer?.ads,
+    payload.data?.customer?.recent_ad, payload.data?.customer?.current_ads,
+    payload.data?.customer?.ads, payload.data?.customer?.ads_sources,
+    payload.pancake_customer_obj?.recent_ad, payload.pancake_customer_obj?.current_ads
+  ];
+  for (const bucket of adBuckets) {
+    if (!bucket) continue;
+    const entries = Array.isArray(bucket) ? bucket : [bucket];
+    for (const ad of entries) {
+      if (!ad) continue;
+      if (typeof ad === 'string') { const s = cleanAdStr(ad); if (s) return s; continue; }
+      const title = cleanAdStr(ad.ad_title) || cleanAdStr(ad.title) || cleanAdStr(ad.ad_name)
+        || cleanAdStr(ad.name) || cleanAdStr(ad.headline) || cleanAdStr(ad.caption)
+        || cleanAdStr(ad.message) || cleanAdStr(ad.ad_message) || cleanAdStr(ad.post_message);
+      if (title) return title;
+      const aid = ad.ad_id || ad.id || ad.post_id;
+      if (aid && /^[0-9_]{5,}$/.test(String(aid).trim())) return `Ad ID: ${String(aid).trim()}`;
+    }
+  }
+
   // 3. Deep recursive search for any property named ad_title, ad_name, campaign_name, etc.
   let foundAd = '';
+  let foundAdId = '';
   function deepSearch(obj, depth = 0) {
     if (!obj || depth > 6 || foundAd) return;
     if (typeof obj === 'object') {
       for (const [k, v] of Object.entries(obj)) {
+        const lk = k.toLowerCase();
         if (typeof v === 'string' && v.trim()) {
-          const lk = k.toLowerCase();
           if (
-            (lk === 'ad_title' || lk === 'ad_name' || lk === 'adtitle' || lk === 'adname' || lk === 'campaign_name' || lk === 'campaign_title' || lk === 'source_ad_name' || lk === 'ad_headline') &&
+            (lk === 'ad_title' || lk === 'ad_name' || lk === 'adtitle' || lk === 'adname' || lk === 'campaign_name' || lk === 'campaign_title' || lk === 'source_ad_name' || lk === 'ad_headline' || lk === 'ad_message' || lk === 'ad_caption') &&
             !/^[-0-9,\s_]+$/.test(v.trim())
           ) {
-            foundAd = v.trim();
-            return;
+            foundAd = cleanAdStr(v);
+            if (foundAd) return;
           }
+          if (!foundAdId && (lk === 'ad_id' || lk === 'source_ad_id') && /^[0-9_]{5,}$/.test(v.trim())) {
+            foundAdId = v.trim();
+          }
+        } else if (typeof v === 'number' && !foundAdId && (lk === 'ad_id' || lk === 'source_ad_id') && String(v).length >= 5) {
+          foundAdId = String(v);
         } else if (typeof v === 'object' && v !== null) {
           deepSearch(v, depth + 1);
         }
@@ -761,14 +802,15 @@ function extractAdSource(payload) {
   deepSearch(payload);
   if (foundAd) return foundAd;
 
-  // 4. Ad ID fallback if ad title/name is not found
-  const adId = payload.referral?.ad_id || 
+  // 4. Ad ID fallback if no ad title/name was found anywhere
+  const adId = payload.referral?.ad_id ||
                payload.referral?.ads_context_data?.ad_id ||
-               payload.data?.referral?.ad_id || 
+               payload.data?.referral?.ad_id ||
                payload.data?.conversation?.ad_id ||
                payload.data?.customer?.ad_id ||
-               payload.data?.ad_id || 
-               payload.ad_id || '';
+               payload.data?.ad_id ||
+               payload.ad_id ||
+               foundAdId || '';
   if (adId && String(adId).trim()) return `Ad ID: ${String(adId).trim()}`;
 
   return '';

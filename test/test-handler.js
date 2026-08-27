@@ -53,7 +53,7 @@ async function runAllTests() {
     await pancakeHandler(req, res);
     assert.strictEqual(resData.statusCode, 200, 'GET should return 200');
     assert.strictEqual(resData.body.status, 'online', 'Status should be online');
-    assert.strictEqual(resData.body.appVersion, '2026.08.27.8', 'App version must match');
+    assert.strictEqual(resData.body.appVersion, '2026.08.27.9', 'App version must match');
     assert.ok(typeof resData.body.serverTimestamp === 'number', 'Server timestamp must be present');
     assert.ok(resData.headers['cache-control']?.includes('no-cache'), 'Cache-Control header must be set to no-cache');
     assert.ok(Array.isArray(resData.body.leads), 'Leads should be an array');
@@ -310,6 +310,47 @@ async function runAllTests() {
     assert.ok(addedLead, 'Lead with phone 0612833830 must be processed');
     assert.strictEqual(addedLead.ad, '[ AI EXPERT ADS ] - รถตัด และ คลิปแรกเจ...', 'Ad title must be accurately extracted from conversation');
     console.log('✅ Test 12 Passed: Ad title extracted accurately from conversation payload');
+  }
+
+  // Test 14: Ad captured from PanCake conversation.recent_ad as an ARRAY
+  {
+    const { req, res, resData } = createMockReqRes({
+      method: 'POST',
+      body: {
+        data: {
+          conversation: {
+            id: 'conv_recent_ad_arr',
+            recent_ad: [
+              { id: '52599132199219', ad_id: '52599132199219', ad_title: '[ AI EXPERT ADS ] - รถตัด และ', message: 'หญิงชราผู้เสียสติ...' }
+            ]
+          },
+          message: { text: 'ขอดู 12 ล้อ อีซูซุ ดั้ม เบอร์ 0983979144', from: { name: 'ช่าง เมืองชล' } }
+        }
+      }
+    });
+    await pancakeHandler(req, res);
+    const lead = resData.body.recentLeads?.find(l => l.phone === '0983979144');
+    assert.ok(lead, 'Lead 0983979144 must be processed');
+    assert.strictEqual(lead.ad, '[ AI EXPERT ADS ] - รถตัด และ', 'Ad title must be read from recent_ad array');
+    console.log('✅ Test 14 Passed: Ad title read from conversation.recent_ad array');
+  }
+
+  // Test 15: Ad ID fallback when only a numeric ad id is present
+  {
+    const { req, res, resData } = createMockReqRes({
+      method: 'POST',
+      body: {
+        data: {
+          customer: { name: 'ลูกค้าแอด', current_ads: [{ ad_id: '52599132199219', post_id: '12345' }] },
+          message: { text: 'สนใจครับ 0955111222' }
+        }
+      }
+    });
+    await pancakeHandler(req, res);
+    const lead = resData.body.recentLeads?.find(l => l.phone === '0955111222');
+    assert.ok(lead, 'Lead 0955111222 must be processed');
+    assert.strictEqual(lead.ad, 'Ad ID: 52599132199219', 'Falls back to Ad ID when no title is available');
+    console.log('✅ Test 15 Passed: Ad ID fallback when no ad title present');
   }
 
   console.log('\n🎉 ALL 12 TESTS PASSED SUCCESSFULLY! The codebase is robust, clean, and ready.\n');
