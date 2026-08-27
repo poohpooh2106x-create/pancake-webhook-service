@@ -324,7 +324,6 @@
     .badge-ma { background: #7c3aed; }
     .badge-pook { background: #dc2626; }
     .badge-fern { background: #0d9488; }
-    .badge-som { background: #db2777; }
 
     /* TABLE SECTION */
     .table-card {
@@ -639,7 +638,7 @@
         <span style="color: #475569;">|</span>
         <span id="lastSyncTimeText">🟢 ซิงค์ล่าสุด: กำลังโหลด...</span>
         <span style="color: #475569;">|</span>
-        <span id="appVersionBadge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.27.1</span>
+        <span id="appVersionBadge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.27.2</span>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span id="saveIndicator" style="color: #34d399; font-size: 11px; transition: opacity 0.3s; opacity: 0.8;"></span>
@@ -922,7 +921,6 @@
           <option value="ม่า">ม่า</option>
           <option value="ปุ๊ก">ปุ๊ก</option>
           <option value="เฟิร์น">เฟิร์น</option>
-          <option value="ส้ม">ส้ม</option>
         </select>
       </div>
 
@@ -1046,7 +1044,7 @@
 
   <script>
 
-    // 9 Sales Team Members
+    // 8 Sales Team Members
     const SALES_TEAM = [
       { name: 'วุธ', badgeClass: 'badge-wuth' },
       { name: 'อั๋น', badgeClass: 'badge-lin' },
@@ -1055,14 +1053,14 @@
       { name: 'เกด', badgeClass: 'badge-ked' },
       { name: 'ม่า', badgeClass: 'badge-ma' },
       { name: 'ปุ๊ก', badgeClass: 'badge-pook' },
-      { name: 'เฟิร์น', badgeClass: 'badge-fern' },
-      { name: 'ส้ม', badgeClass: 'badge-som' }
+      { name: 'เฟิร์น', badgeClass: 'badge-fern' }
     ];
 
     function sanitizeSalesName(name) {
       if (!name) return '';
       const s = String(name).trim();
       if (s === 'ลิ้น') return 'อั๋น';
+      if (s === 'ส้ม') return ''; // retired rep — clear stale assignments across devices
       return s;
     }
 
@@ -1372,7 +1370,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.08.27.1';
+    const APP_VERSION = '2026.08.27.2';
     let lastSyncTimestamp = 0;
     const DEFAULT_ADMIN_TOKEN = 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
     let currentUserRole = 'admin'; // 'admin' | 'sales'

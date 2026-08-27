@@ -6,7 +6,7 @@ const { google } = require('googleapis');
 const https = require('https');
 
 // Dedicated Cloud Storage ID for Multi-Device Global Sync
-const APP_VERSION = '2026.08.27.1';
+const APP_VERSION = '2026.08.27.2';
 const CLOUD_OBJECT_ID = 'ff8081819ff5b11001a03c0bbbae2203';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 
@@ -31,7 +31,7 @@ const DEFAULT_MASTER_LEADS = [
     phone: "0832420639",
     source: "FB เคพีศรีราชา",
     truck: "หาง",
-    sales: "ส้ม",
+    sales: "",
     ad: "",
     report: ""
   },
@@ -115,7 +115,7 @@ const DEFAULT_MASTER_LEADS = [
     phone: "0959847717",
     source: "FB เคพีศรีราชา",
     truck: "ตู้10",
-    sales: "ส้ม",
+    sales: "",
     ad: "",
     report: "รถคันแรก วิ่งผลดาวน์200,000ทักหาส่งรูปและรายละเอียดเรียบร้อยครับกรุณาติดต่อลูกค้าทันทีครับ"
   },
