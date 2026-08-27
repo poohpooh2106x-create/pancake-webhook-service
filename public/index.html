@@ -278,7 +278,7 @@
     .chart-container {
       position: relative;
       flex: 1;
-      min-height: 180px;
+      min-height: 210px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -658,7 +658,7 @@
         <span style="color: #475569;">|</span>
         <span id="lastSyncTimeText">🟢 ซิงค์ล่าสุด: กำลังโหลด...</span>
         <span style="color: #475569;">|</span>
-        <span id="appVersionBadge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.27.4</span>
+        <span id="appVersionBadge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.27.5</span>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span id="saveIndicator" style="color: #34d399; font-size: 11px; transition: opacity 0.3s; opacity: 0.8;"></span>
@@ -712,8 +712,8 @@
       <!-- 1. Donut Chart: รถที่สนใจ -->
       <div class="chart-card">
         <div class="chart-title">
-          <span>🚚 สัดส่วนรถที่ลูกค้าสนใจ (มีเบอร์โทร)</span>
-          <span class="chart-sub">หัวลาก/ตู้10/หาง/ดั๊ม/กำหนดเอง</span>
+          <span>🚚 ประเภทรถที่ลูกค้าสนใจ (มีเบอร์โทร)</span>
+          <span class="chart-sub">เรียงมากไปน้อย · จำนวนคัน</span>
         </div>
         <div class="chart-container">
           <canvas id="truckChart"></canvas>
@@ -1121,13 +1121,6 @@
     let salesChartInstance = null;
     let latestServerLogs = [];
 
-    // TRUCK COLORS PALETTE FOR CHART
-    const CHART_COLORS = [
-      '#f97316', '#3b82f6', '#10b981', '#a855f7', 
-      '#06b6d4', '#ec4899', '#eab308', '#6366f1', 
-      '#14b8a6', '#f43f5e', '#84cc16', '#8b5cf6'
-    ];
-
     // Load Truck Types (Direct user list, NEVER re-merges deleted trucks)
     function loadTruckTypes() {
 
@@ -1401,7 +1394,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.08.27.4';
+    const APP_VERSION = '2026.08.27.5';
     let lastSyncTimestamp = 0;
     const DEFAULT_ADMIN_TOKEN = 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e';
     let currentUserRole = 'admin'; // 'admin' | 'sales'
@@ -2683,31 +2676,59 @@ ${adSection}━━━━━━━━━━━━━━━━━━
 
 
     // Charts
+    // Draws the value (จำนวนคัน) just past the end of each horizontal bar
+    const barValueLabelPlugin = {
+      id: 'barValueLabel',
+      afterDatasetsDraw(chart) {
+        const meta = chart.getDatasetMeta(0);
+        if (!meta || !meta.data) return;
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.font = '600 11px Prompt, sans-serif';
+        ctx.fillStyle = '#e2e8f0';
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        meta.data.forEach((bar, i) => {
+          const val = chart.data.datasets[0].data[i];
+          if (val === undefined || val === null) return;
+          ctx.fillText(String(val), bar.x + 6, bar.y);
+        });
+        ctx.restore();
+      }
+    };
+
     function initCharts() {
       try {
         const ctxTruck = document.getElementById('truckChart').getContext('2d');
         truckChartInstance = new Chart(ctxTruck, {
-          type: 'doughnut',
+          type: 'bar',
           data: {
-            labels: truckTypes,
+            labels: [],
             datasets: [{
-              data: truckTypes.map(() => 0),
-              backgroundColor: truckTypes.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
-              borderWidth: 0
+              label: 'จำนวนคัน',
+              data: [],
+              backgroundColor: '#38bdf8',
+              borderRadius: { topLeft: 0, bottomLeft: 0, topRight: 4, bottomRight: 4 },
+              borderSkipped: false,
+              maxBarThickness: 22
             }]
           },
           options: {
+            indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: false,
             animation: { duration: 300 },
+            layout: { padding: { right: 26 } },
             plugins: {
-              legend: {
-                position: 'bottom',
-                labels: { color: '#94a3b8', boxWidth: 12, font: { family: 'Prompt', size: 11 } }
-              }
+              legend: { display: false },
+              tooltip: { callbacks: { label: (c) => ` ${c.parsed.x} คัน` } }
             },
-            cutout: '70%'
-          }
+            scales: {
+              x: { display: false, beginAtZero: true, grace: '10%' },
+              y: { ticks: { color: '#cbd5e1', font: { family: 'Prompt', size: 11 } }, grid: { display: false } }
+            }
+          },
+          plugins: [barValueLabelPlugin]
         });
 
         const ctxSales = document.getElementById('salesChart').getContext('2d');
@@ -2743,14 +2764,15 @@ ${adSection}━━━━━━━━━━━━━━━━━━
       try {
         const validLeads = Array.isArray(leads) ? leads.filter(l => l && typeof l === 'object') : [];
 
-        // Dynamic Truck Data
-        const validTrucks = Array.isArray(truckTypes) && truckTypes.length > 0 ? truckTypes : ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
-        truckChartInstance.data.labels = [...validTrucks];
-        truckChartInstance.data.datasets[0].backgroundColor = validTrucks.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
-
-        const truckCounts = validTrucks.map(t => validLeads.filter(l => l.truck === t).length);
-        const displayTruckData = truckCounts.every(v => v === 0) ? validTrucks.map(() => 0) : truckCounts;
-        truckChartInstance.data.datasets[0].data = displayTruckData;
+        // Truck data: horizontal bars, most-interested first, count at bar end
+        const baseTrucks = Array.isArray(truckTypes) && truckTypes.length > 0 ? truckTypes : ['หัวลาก', 'ตู้10', 'หาง', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
+        const truckTally = baseTrucks
+          .map(t => ({ t, n: validLeads.filter(l => l.truck === t).length }))
+          .sort((a, b) => b.n - a.n);
+        let shownTrucks = truckTally.filter(x => x.n > 0);
+        if (shownTrucks.length === 0) shownTrucks = truckTally.slice(0, 6); // nothing assigned yet
+        truckChartInstance.data.labels = shownTrucks.map(x => x.t);
+        truckChartInstance.data.datasets[0].data = shownTrucks.map(x => x.n);
         truckChartInstance.update();
 
         // Dynamic Sales Data
