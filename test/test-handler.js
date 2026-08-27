@@ -53,7 +53,7 @@ async function runAllTests() {
     await pancakeHandler(req, res);
     assert.strictEqual(resData.statusCode, 200, 'GET should return 200');
     assert.strictEqual(resData.body.status, 'online', 'Status should be online');
-    assert.strictEqual(resData.body.appVersion, '2026.08.28.2', 'App version must match');
+    assert.strictEqual(resData.body.appVersion, '2026.08.28.3', 'App version must match');
     assert.ok(typeof resData.body.serverTimestamp === 'number', 'Server timestamp must be present');
     assert.ok(resData.headers['cache-control']?.includes('no-cache'), 'Cache-Control header must be set to no-cache');
     assert.ok(Array.isArray(resData.body.leads), 'Leads should be an array');
@@ -351,6 +351,27 @@ async function runAllTests() {
     assert.ok(lead, 'Lead 0955111222 must be processed');
     assert.strictEqual(lead.ad, 'Ad ID: 52599132199219', 'Falls back to Ad ID when no title is available');
     console.log('✅ Test 15 Passed: Ad ID fallback when no ad title present');
+  }
+
+  // Test 16: A lead added on another device is not dropped when a device
+  // syncs its own (older) full list back (union-merge, not blind replace)
+  {
+    const admin = { 'x-pancake-secret': 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e' };
+
+    let m = createMockReqRes({ method: 'POST', query: { action: 'sync_state' }, headers: admin,
+      body: { leads: [{ id: 'devB_1', date: '28/08/2026', time: '09:00:00', name: 'เคสจากเครื่อง B', phone: '0900777001', source: 'FB เคพีศรีราชา', truck: '', sales: '', report: '', ad: '' }] } });
+    await pancakeHandler(m.req, m.res);
+
+    m = createMockReqRes({ method: 'POST', query: { action: 'sync_state' }, headers: admin,
+      body: { leads: [{ id: 'devA_1', date: '28/08/2026', time: '08:00:00', name: 'เคสจากเครื่อง A', phone: '0900777002', source: 'FB เคพีศรีราชา', truck: '', sales: '', report: '', ad: '' }] } });
+    await pancakeHandler(m.req, m.res);
+
+    m = createMockReqRes({ method: 'GET', headers: admin });
+    await pancakeHandler(m.req, m.res);
+    const phones = m.resData.body.leads.map(l => l.phone);
+    assert.ok(phones.includes('0900777001'), 'device B lead must survive device A sync');
+    assert.ok(phones.includes('0900777002'), 'device A lead must be present');
+    console.log('✅ Test 16 Passed: Concurrent full-list syncs union-merge (no lead lost)');
   }
 
   console.log('\n🎉 ALL 12 TESTS PASSED SUCCESSFULLY! The codebase is robust, clean, and ready.\n');

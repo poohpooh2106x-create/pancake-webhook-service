@@ -5,10 +5,124 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-// Dedicated Cloud Storage ID for Multi-Device Global Sync
-const APP_VERSION = '2026.08.28.2';
+const APP_VERSION = '2026.08.28.3';
+
+// ---------------------------------------------------------------------------
+// STORAGE LAYER
+// Primary: Upstash Redis (set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN).
+// Fallback: the original restful-api.dev object (used until the env vars exist),
+// so deploying this change is a no-op until Upstash is configured.
+// ---------------------------------------------------------------------------
 const CLOUD_OBJECT_ID = 'ff8081819ff5b11001a03c0bbbae2203';
 const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
+
+const UPSTASH_URL = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/+$/, '');
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const STORAGE_KEY = process.env.PANCAKE_STORAGE_KEY || 'pancake_crm_state_v1';
+const USE_UPSTASH = !!(UPSTASH_URL && UPSTASH_TOKEN);
+
+function upstashCommand(command) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify(command);
+    let host, path;
+    try {
+      const u = new URL(UPSTASH_URL);
+      host = u.hostname;
+      path = u.pathname && u.pathname !== '/' ? u.pathname : '/';
+    } catch (e) { return reject(new Error('Bad UPSTASH_REDIS_REST_URL')); }
+    const req = https.request({
+      hostname: host, path, method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${UPSTASH_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, (res) => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => {
+        try {
+          const j = JSON.parse(d || '{}');
+          if (j.error) return reject(new Error(j.error));
+          resolve(j.result);
+        } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+// Read the shared state object ({ leads, truckTypes, channels, ... }) or null.
+async function storageLoad() {
+  if (USE_UPSTASH) {
+    try {
+      const raw = await upstashCommand(['GET', STORAGE_KEY]);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      console.error('storageLoad (upstash) error:', e.message);
+      return null;
+    }
+  }
+  return new Promise((resolve) => {
+    https.get(CLOUD_API_URL, (res) => {
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(body);
+          resolve(json && json.data ? json.data : null);
+        } catch (e) { resolve(null); }
+      });
+    }).on('error', () => resolve(null));
+  });
+}
+
+// Persist the shared state object. Returns true on success.
+async function storageSave(dataObj) {
+  if (USE_UPSTASH) {
+    try {
+      await upstashCommand(['SET', STORAGE_KEY, JSON.stringify(dataObj)]);
+      return true;
+    } catch (e) {
+      console.error('storageSave (upstash) error:', e.message);
+      return false;
+    }
+  }
+  const payloadStr = JSON.stringify({ name: 'pancake_crm_state', data: dataObj });
+  return new Promise((resolve) => {
+    const req = https.request(CLOUD_API_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payloadStr) }
+    }, (res) => {
+      res.on('data', () => {});
+      res.on('end', () => resolve(res.statusCode >= 200 && res.statusCode < 300));
+    });
+    req.on('error', (err) => { console.error('storageSave (legacy) error:', err.message); resolve(false); });
+    req.write(payloadStr);
+    req.end();
+  });
+}
+
+// Union-merge two lead arrays by id/phone. Leads present only in `base`
+// (added on another device) are kept; overlapping leads take `incoming`'s
+// field values. Prevents the "lead vanishes when two devices sync" race.
+function mergeLeadArrays(base, incoming, blacklist) {
+  const map = new Map();
+  const keyOf = (l) => (l && (l.id || l.phone)) || null;
+  for (const l of (Array.isArray(base) ? base : [])) {
+    const k = keyOf(l);
+    if (k && !isBlacklistedLead(l, blacklist)) map.set(k, l);
+  }
+  for (const l of (Array.isArray(incoming) ? incoming : [])) {
+    const k = keyOf(l);
+    if (!k || isBlacklistedLead(l, blacklist)) continue;
+    const prev = map.get(k);
+    map.set(k, prev ? { ...prev, ...l } : l);
+  }
+  return sortLeadsByDate([...map.values()]);
+}
 
 const DEFAULT_MASTER_LEADS = [
   {
@@ -819,114 +933,87 @@ function extractAdSource(payload) {
 
 // Cloud Storage Helpers (Global Multi-Device Sync & Persistent Logs)
 
-function fetchCloudData() {
-  if (process.env.NODE_ENV === 'test') {
-    return Promise.resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, channels: memoryChannels, deletedIds: memoryDeletedIds, logs: webhookLogs });
+async function fetchCloudData() {
+  const memSnapshot = () => ({ leads: memoryLeads, truckTypes: memoryTruckTypes, channels: memoryChannels, deletedIds: memoryDeletedIds, logs: webhookLogs });
+  if (process.env.NODE_ENV === 'test') return memSnapshot();
+
+  let data = null;
+  try { data = await storageLoad(); } catch (e) { data = null; }
+  if (!data || typeof data !== 'object') return memSnapshot();
+
+  // 1. Lightweight recentLeads (legacy restful-api.dev payloads carried only these)
+  if (Array.isArray(data.recentLeads)) {
+    for (const rLead of data.recentLeads) {
+      if (rLead && rLead.phone && !isBlacklistedLead(rLead, memoryDeletedIds)) {
+        const existingIdx = memoryLeads.findIndex(l => (rLead.id && l.id === rLead.id) || l.phone === rLead.phone);
+        if (existingIdx !== -1) memoryLeads[existingIdx] = { ...memoryLeads[existingIdx], ...rLead };
+        else memoryLeads.unshift(rLead);
+      }
+    }
   }
-  return new Promise((resolve) => {
-    https.get(CLOUD_API_URL, (res) => {
-      let body = '';
-      res.on('data', d => body += d);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(body);
-          if (json.data) {
-            // 1. Support lightweight recentLeads (< 1KB payload limit for 100% reliable cloud sync)
-            if (Array.isArray(json.data.recentLeads)) {
-              for (const rLead of json.data.recentLeads) {
-                if (rLead && rLead.phone && !isBlacklistedLead(rLead, memoryDeletedIds)) {
-                  const existingIdx = memoryLeads.findIndex(l => (rLead.id && l.id === rLead.id) || l.phone === rLead.phone);
-                  if (existingIdx !== -1) {
-                    memoryLeads[existingIdx] = { ...memoryLeads[existingIdx], ...rLead };
-                  } else {
-                    memoryLeads.unshift(rLead);
-                  }
-                }
-              }
-            }
 
-            // 2. Full leads list from cloud is authoritative: update existing leads
-            //    field-by-field (so edits on any device propagate) and add new ones.
-            if (Array.isArray(json.data.leads)) {
-              const cloudLeads = json.data.leads.filter(l => l && l.phone && l.phone !== '0812345678');
-              for (const cl of cloudLeads) {
-                if (isBlacklistedLead(cl, memoryDeletedIds)) continue;
-                const idx = memoryLeads.findIndex(l => (cl.id && l.id === cl.id) || l.phone === cl.phone);
-                if (idx !== -1) {
-                  memoryLeads[idx] = { ...memoryLeads[idx], ...cl };
-                } else {
-                  memoryLeads.unshift(cl);
-                }
-              }
-            }
+  // 2. Full leads list from storage: update existing leads field-by-field and add new ones
+  if (Array.isArray(data.leads)) {
+    const cloudLeads = data.leads.filter(l => l && l.phone && l.phone !== '0812345678');
+    for (const cl of cloudLeads) {
+      if (isBlacklistedLead(cl, memoryDeletedIds)) continue;
+      const idx = memoryLeads.findIndex(l => (cl.id && l.id === cl.id) || l.phone === cl.phone);
+      if (idx !== -1) memoryLeads[idx] = { ...memoryLeads[idx], ...cl };
+      else memoryLeads.unshift(cl);
+    }
+  }
 
-            // Only take the cloud copy of a customizable list when it is at least
-            // as new as what we already hold - otherwise a lagging cloud write
-            // would undo a deletion the user just made.
-            const cloudTruckTs = Number(json.data.truckTypesUpdatedAt) || 0;
-            if (Array.isArray(json.data.truckTypes) && json.data.truckTypes.length > 0 && cloudTruckTs >= memoryTruckTypesUpdatedAt) {
-              memoryTruckTypes = json.data.truckTypes;
-              memoryTruckTypesUpdatedAt = cloudTruckTs;
-            }
-            const cloudChannelTs = Number(json.data.channelsUpdatedAt) || 0;
-            if (Array.isArray(json.data.channels) && json.data.channels.length > 0 && cloudChannelTs >= memoryChannelsUpdatedAt) {
-              memoryChannels = json.data.channels;
-              memoryChannelsUpdatedAt = cloudChannelTs;
-            }
-            if (Array.isArray(json.data.deletedIds)) {
-              for (const d of json.data.deletedIds) {
-                if (d && !memoryDeletedIds.includes(d)) memoryDeletedIds.push(d);
-              }
-            }
-            if (Array.isArray(json.data.logs)) {
-              webhookLogs = json.data.logs;
-            }
+  // Customizable lists: only accept a copy at least as new as what we hold
+  const cloudTruckTs = Number(data.truckTypesUpdatedAt) || 0;
+  if (Array.isArray(data.truckTypes) && data.truckTypes.length > 0 && cloudTruckTs >= memoryTruckTypesUpdatedAt) {
+    memoryTruckTypes = data.truckTypes;
+    memoryTruckTypesUpdatedAt = cloudTruckTs;
+  }
+  const cloudChannelTs = Number(data.channelsUpdatedAt) || 0;
+  if (Array.isArray(data.channels) && data.channels.length > 0 && cloudChannelTs >= memoryChannelsUpdatedAt) {
+    memoryChannels = data.channels;
+    memoryChannelsUpdatedAt = cloudChannelTs;
+  }
+  if (Array.isArray(data.deletedIds)) {
+    for (const d of data.deletedIds) {
+      if (d && !memoryDeletedIds.includes(d)) memoryDeletedIds.push(d);
+    }
+  }
+  if (Array.isArray(data.logs)) webhookLogs = data.logs;
 
-            // Filter out any blacklisted deleted leads
-            if (memoryDeletedIds.length > 0) {
-              memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
-            }
-            resolve(json.data);
-            return;
-          }
-        } catch(e) {}
-        resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, channels: memoryChannels, deletedIds: memoryDeletedIds, logs: webhookLogs });
-      });
-    }).on('error', () => resolve({ leads: memoryLeads, truckTypes: memoryTruckTypes, channels: memoryChannels, deletedIds: memoryDeletedIds, logs: webhookLogs }));
-  });
+  if (memoryDeletedIds.length > 0) {
+    memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
+  }
+  return data;
 }
 
 const GOOGLE_SHEETS_SCRIPT_URL = process.env.GOOGLE_SHEETS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzUdIU62Fx5-OS9Ldjx54O_HU5NJtt-C5RoFrF0k1OECVeTnFlyirdEheX6b88e8rBXmw/exec';
 
+async function postLeadToSheet(lead, attempt = 0) {
+  try {
+    const res = await fetch(GOOGLE_SHEETS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lead }),
+      redirect: 'follow'
+    });
+    if (res && !res.ok && attempt < 2) throw new Error('HTTP ' + res.status);
+  } catch (err) {
+    if (attempt < 2) {
+      await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+      return postLeadToSheet(lead, attempt + 1);
+    }
+    console.warn('Sync lead to sheet failed after retries:', err.message, lead && lead.phone);
+  }
+}
+
 async function syncToGoogleSheets(data) {
+  if (process.env.NODE_ENV === 'test') return;
   if (!GOOGLE_SHEETS_SCRIPT_URL || !data) return;
   try {
-    if (Array.isArray(data)) {
-      for (const lead of data) {
-        if (lead && lead.phone) {
-          try {
-            await fetch(GOOGLE_SHEETS_SCRIPT_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ lead }),
-              redirect: 'follow'
-            });
-          } catch(err) {
-            console.warn('Sync lead to sheet error:', err.message);
-          }
-        }
-      }
-    } else if (data.phone) {
-      try {
-        await fetch(GOOGLE_SHEETS_SCRIPT_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lead: data }),
-          redirect: 'follow'
-        });
-      } catch(err) {
-        console.warn('Sync lead to sheet error:', err.message);
-      }
+    const leads = Array.isArray(data) ? data : [data];
+    for (const lead of leads) {
+      if (lead && lead.phone) await postLeadToSheet(lead);
     }
   } catch (e) {
     console.warn('Google Sheets sync error:', e.message);
@@ -950,59 +1037,31 @@ async function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList
     return Promise.resolve(true);
   }
 
-  // Persist the FULL shared state so every device sees the same leads,
-  // truck types, channels and deletions after a serverless cold start.
-  const putCloud = (payloadStr) => new Promise((resolve) => {
-    const req = https.request(CLOUD_API_URL, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payloadStr)
-      }
-    }, (res) => {
-      res.on('data', () => {});
-      res.on('end', () => resolve(res.statusCode >= 200 && res.statusCode < 300));
-    });
-    req.on('error', (err) => {
-      console.error('Cloud save error:', err.message);
-      resolve(false);
-    });
-    req.write(payloadStr);
-    req.end();
-  });
+  // Persist the FULL shared state (Upstash has no practical size limit).
+  const fullData = {
+    leads: memoryLeads.slice(0, USE_UPSTASH ? 2000 : 120),
+    recentLeads: memoryLeads.slice(0, 3),
+    truckTypes: memoryTruckTypes,
+    channels: memoryChannels,
+    truckTypesUpdatedAt: memoryTruckTypesUpdatedAt,
+    channelsUpdatedAt: memoryChannelsUpdatedAt,
+    deletedIds: memoryDeletedIds.slice(-500),
+    updatedAt: Date.now()
+  };
 
-  const fullPayload = JSON.stringify({
-    name: 'pancake_crm_state',
-    data: {
-      leads: memoryLeads.slice(0, 120),
-      recentLeads: memoryLeads.slice(0, 3),
-      truckTypes: memoryTruckTypes,
-      channels: memoryChannels,
-      truckTypesUpdatedAt: memoryTruckTypesUpdatedAt,
-      channelsUpdatedAt: memoryChannelsUpdatedAt,
-      deletedIds: memoryDeletedIds.slice(-100),
-      updatedAt: Date.now()
-    }
-  });
+  const ok = await storageSave(fullData);
+  if (ok || USE_UPSTASH) return ok;
 
-  const ok = await putCloud(fullPayload);
-  if (ok) return true;
-
-  // Fallback: if the provider rejected the full payload (size/rate limit),
-  // still persist the critical delta so we never regress below the old behaviour.
-  const minPayload = JSON.stringify({
-    name: 'pancake_crm_state',
-    data: {
-      recentLeads: memoryLeads.slice(0, 3),
-      truckTypes: memoryTruckTypes,
-      channels: memoryChannels,
-      truckTypesUpdatedAt: memoryTruckTypesUpdatedAt,
-      channelsUpdatedAt: memoryChannelsUpdatedAt,
-      deletedIds: memoryDeletedIds.slice(-20),
-      updatedAt: Date.now()
-    }
+  // Legacy provider rejected the full payload (size/rate limit): persist the delta
+  return storageSave({
+    recentLeads: memoryLeads.slice(0, 3),
+    truckTypes: memoryTruckTypes,
+    channels: memoryChannels,
+    truckTypesUpdatedAt: memoryTruckTypesUpdatedAt,
+    channelsUpdatedAt: memoryChannelsUpdatedAt,
+    deletedIds: memoryDeletedIds.slice(-20),
+    updatedAt: Date.now()
   });
-  return putCloud(minPayload);
 }
 
 
@@ -1319,6 +1378,7 @@ module.exports = async (req, res) => {
     return res.status(200).json({
       status: 'online',
       platform: 'vercel',
+      storage: USE_UPSTASH ? 'upstash' : 'legacy',
       appVersion: APP_VERSION,
       serverTimestamp: Date.now(),
       serverTime: `${thaiDate} ${thaiTime}`,
@@ -1361,8 +1421,8 @@ module.exports = async (req, res) => {
     }
 
     if (Array.isArray(payload?.leads)) {
-      memoryLeads = payload.leads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
-    } else if (delPhone || delId) {
+      memoryLeads = mergeLeadArrays(memoryLeads, payload.leads, memoryDeletedIds);
+    } else {
       memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
     }
     await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
@@ -1440,9 +1500,10 @@ module.exports = async (req, res) => {
       return res.status(200).json({ success: true, message: 'Sales report updated', role: 'sales', deletedIds: memoryDeletedIds });
     }
 
-    // Admin has full control - filter against blacklist
+    // Admin has full control. Union-merge so a lead added on another device
+    // is not dropped when this device syncs its (older) full list.
     if (Array.isArray(payload?.leads)) {
-      memoryLeads = payload.leads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
+      memoryLeads = mergeLeadArrays(memoryLeads, payload.leads, memoryDeletedIds);
     }
     let sheetSyncTarget = null;
     if (payload?.lead) {
