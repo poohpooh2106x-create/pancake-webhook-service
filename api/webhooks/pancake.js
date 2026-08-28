@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.29.5';
+const APP_VERSION = '2026.08.29.6';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -138,27 +138,6 @@ function unblacklistKeys(lead) {
     if (lead.name) keys.add(`${String(lead.name).trim()}_${raw}`);
   }
   if (keys.size) memoryDeletedIds = memoryDeletedIds.filter(d => !keys.has(String(d).trim()));
-}
-
-// Any blacklist key that matches a currently-live lead is stale (a customer who
-// was deleted then re-added). Drop those so a stale copy of the blacklist pushed
-// up by an old client cannot keep nuking a real lead.
-function pruneDeletedIds() {
-  if (!memoryDeletedIds.length || !memoryLeads.length) return;
-  const live = new Set();
-  for (const l of memoryLeads) {
-    if (!l) continue;
-    if (l.id) live.add(String(l.id).trim());
-    if (l.phone) {
-      const raw = String(l.phone).trim();
-      live.add(raw);
-      live.add(raw.replace(/[\s\-\.\/]/g, ''));
-      const c = cleanThaiPhoneNumber(raw);
-      if (c) live.add(c);
-      if (l.name) live.add(`${String(l.name).trim()}_${raw}`);
-    }
-  }
-  memoryDeletedIds = memoryDeletedIds.filter(d => !live.has(String(d).trim()));
 }
 
 const DEFAULT_MASTER_LEADS = [
@@ -978,25 +957,24 @@ async function fetchCloudData() {
   try { data = await storageLoad(); } catch (e) { data = null; }
   if (!data || typeof data !== 'object') return memSnapshot();
 
-  // 1. Lightweight recentLeads (legacy restful-api.dev payloads carried only these)
-  if (Array.isArray(data.recentLeads)) {
-    for (const rLead of data.recentLeads) {
-      if (rLead && rLead.phone && !isBlacklistedLead(rLead, memoryDeletedIds)) {
-        const existingIdx = memoryLeads.findIndex(l => (rLead.id && l.id === rLead.id) || l.phone === rLead.phone);
-        if (existingIdx !== -1) memoryLeads[existingIdx] = { ...memoryLeads[existingIdx], ...rLead };
-        else memoryLeads.unshift(rLead);
-      }
+  if (Array.isArray(data.deletedIds)) {
+    for (const d of data.deletedIds) {
+      if (d && !memoryDeletedIds.includes(d)) memoryDeletedIds.push(d);
     }
   }
 
-  // 2. Full leads list from storage: update existing leads field-by-field and add new ones
-  if (Array.isArray(data.leads)) {
-    const cloudLeads = data.leads.filter(l => l && l.phone && l.phone !== '0812345678');
-    for (const cl of cloudLeads) {
-      if (isBlacklistedLead(cl, memoryDeletedIds)) continue;
-      const idx = memoryLeads.findIndex(l => (cl.id && l.id === cl.id) || l.phone === cl.phone);
-      if (idx !== -1) memoryLeads[idx] = { ...memoryLeads[idx], ...cl };
-      else memoryLeads.unshift(cl);
+  // Storage is authoritative. If it holds a leads array, REPLACE the in-memory
+  // list with it (don't union with DEFAULT_MASTER_LEADS or a stale recentLeads,
+  // which is how deleted leads kept resurrecting on cold starts).
+  if (Array.isArray(data.leads) && data.leads.length > 0) {
+    memoryLeads = data.leads.filter(l => l && l.phone && l.phone !== '0812345678');
+  } else if (Array.isArray(data.recentLeads)) {
+    for (const rLead of data.recentLeads) {
+      if (rLead && rLead.phone && !isBlacklistedLead(rLead, memoryDeletedIds)) {
+        const i = memoryLeads.findIndex(l => (rLead.id && l.id === rLead.id) || l.phone === rLead.phone);
+        if (i !== -1) memoryLeads[i] = { ...memoryLeads[i], ...rLead };
+        else memoryLeads.unshift(rLead);
+      }
     }
   }
 
@@ -1011,14 +989,8 @@ async function fetchCloudData() {
     memoryChannels = data.channels;
     memoryChannelsUpdatedAt = cloudChannelTs;
   }
-  if (Array.isArray(data.deletedIds)) {
-    for (const d of data.deletedIds) {
-      if (d && !memoryDeletedIds.includes(d)) memoryDeletedIds.push(d);
-    }
-  }
   if (Array.isArray(data.logs)) webhookLogs = data.logs;
 
-  pruneDeletedIds();
   if (memoryDeletedIds.length > 0) {
     memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
   }
