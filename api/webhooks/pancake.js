@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.29.1';
+const APP_VERSION = '2026.08.29.2';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -38,18 +38,20 @@ function upstashCommand(command) {
         'Content-Length': Buffer.byteLength(body)
       }
     }, (res) => {
-      let d = '';
-      res.on('data', c => d += c);
+      // Collect raw bytes and decode once — decoding per-chunk corrupts any
+      // multi-byte UTF-8 char (e.g. Thai) split across a chunk boundary.
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
       res.on('end', () => {
         try {
-          const j = JSON.parse(d || '{}');
+          const j = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           if (j.error) return reject(new Error(j.error));
           resolve(j.result);
         } catch (e) { reject(e); }
       });
     });
     req.on('error', reject);
-    req.write(body);
+    req.write(body, 'utf8');
     req.end();
   });
 }
@@ -58,11 +60,11 @@ function upstashCommand(command) {
 function legacyObjectLoad() {
   return new Promise((resolve) => {
     https.get(CLOUD_API_URL, (res) => {
-      let body = '';
-      res.on('data', d => body += d);
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
       res.on('end', () => {
         try {
-          const json = JSON.parse(body);
+          const json = JSON.parse(Buffer.concat(chunks).toString('utf8'));
           resolve(json && json.data ? json.data : null);
         } catch (e) { resolve(null); }
       });
@@ -159,6 +161,27 @@ function unblacklistKeys(lead) {
     if (lead.name) keys.add(`${String(lead.name).trim()}_${raw}`);
   }
   if (keys.size) memoryDeletedIds = memoryDeletedIds.filter(d => !keys.has(String(d).trim()));
+}
+
+// Any blacklist key that matches a currently-live lead is stale (a customer who
+// was deleted then re-added). Drop those so a stale copy of the blacklist pushed
+// up by an old client cannot keep nuking a real lead.
+function pruneDeletedIds() {
+  if (!memoryDeletedIds.length || !memoryLeads.length) return;
+  const live = new Set();
+  for (const l of memoryLeads) {
+    if (!l) continue;
+    if (l.id) live.add(String(l.id).trim());
+    if (l.phone) {
+      const raw = String(l.phone).trim();
+      live.add(raw);
+      live.add(raw.replace(/[\s\-\.\/]/g, ''));
+      const c = cleanThaiPhoneNumber(raw);
+      if (c) live.add(c);
+      if (l.name) live.add(`${String(l.name).trim()}_${raw}`);
+    }
+  }
+  memoryDeletedIds = memoryDeletedIds.filter(d => !live.has(String(d).trim()));
 }
 
 const DEFAULT_MASTER_LEADS = [
@@ -1018,6 +1041,7 @@ async function fetchCloudData() {
   }
   if (Array.isArray(data.logs)) webhookLogs = data.logs;
 
+  pruneDeletedIds();
   if (memoryDeletedIds.length > 0) {
     memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
   }
@@ -1064,7 +1088,9 @@ async function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList
   if (Array.isArray(logsList)) webhookLogs = logsList;
   if (Array.isArray(deletedIdsList)) memoryDeletedIds = deletedIdsList;
 
-  // Filter memoryLeads against blacklist before saving to cloud
+  // Filter memoryLeads against blacklist before saving to cloud.
+  // (Pruning stale blacklist entries happens on READ in fetchCloudData, not
+  // here — so a fresh delete_lead entry still sticks through its own save.)
   if (memoryDeletedIds.length > 0) {
     memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
   }
@@ -1287,9 +1313,10 @@ async function getRawBody(req) {
   }
   if (!req.on || typeof req.on !== 'function') return {};
   return new Promise((resolve) => {
-    let data = '';
-    req.on('data', chunk => { data += chunk; });
+    const chunks = [];
+    req.on('data', chunk => { chunks.push(chunk); });
     req.on('end', () => {
+      const data = Buffer.concat(chunks).toString('utf8');
       try { resolve(JSON.parse(data || '{}')); } catch(e) { resolve({ raw: data }); }
     });
     req.on('error', () => resolve({}));
