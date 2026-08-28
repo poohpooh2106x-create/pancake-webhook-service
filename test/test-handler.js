@@ -53,7 +53,7 @@ async function runAllTests() {
     await pancakeHandler(req, res);
     assert.strictEqual(resData.statusCode, 200, 'GET should return 200');
     assert.strictEqual(resData.body.status, 'online', 'Status should be online');
-    assert.strictEqual(resData.body.appVersion, '2026.08.29.3', 'App version must match');
+    assert.strictEqual(resData.body.appVersion, '2026.08.29.4', 'App version must match');
     assert.ok(typeof resData.body.serverTimestamp === 'number', 'Server timestamp must be present');
     assert.ok(resData.headers['cache-control']?.includes('no-cache'), 'Cache-Control header must be set to no-cache');
     assert.ok(Array.isArray(resData.body.leads), 'Leads should be an array');

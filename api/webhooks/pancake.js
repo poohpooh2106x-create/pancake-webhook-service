@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.29.3';
+const APP_VERSION = '2026.08.29.4';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1553,6 +1553,8 @@ module.exports = async (req, res) => {
         if (payload.lead.truck !== undefined) target.truck = payload.lead.truck;
         if (payload.lead.date !== undefined) target.date = payload.lead.date;
         if (payload.lead.source !== undefined) target.source = payload.lead.source;
+        if (payload.lead.name !== undefined) target.name = payload.lead.name;
+        if (payload.lead.ad !== undefined) target.ad = payload.lead.ad;
       }
     }
     // Google Sheets is NOT written on edits (that is what inflated the sheet).
