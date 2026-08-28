@@ -713,7 +713,7 @@
         <span style="color: var(--border-light);">|</span>
         <span id="lastSyncTimeText">🟢 ซิงค์ล่าสุด: กำลังโหลด...</span>
         <span style="color: var(--border-light);">|</span>
-        <span id="appVersionBadge" style="background: var(--soft); border: 1px solid var(--border); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.28.9</span>
+        <span id="appVersionBadge" style="background: var(--soft); border: 1px solid var(--border); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.29.1</span>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span id="saveIndicator" style="color: var(--success); font-size: 11px; transition: opacity 0.3s; opacity: 0.8;"></span>
@@ -1475,7 +1475,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.08.28.9';
+    const APP_VERSION = '2026.08.29.1';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
@@ -1801,19 +1801,15 @@
                 deletedBlacklistSet.add(d);
               }
             }
-            try {
-              localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(localDeletedIds.slice(-500)));
-            } catch(e) {}
           }
 
           // The server (Upstash) is the single source of truth. Adopt its list
-          // verbatim so every device shows the same thing. The only exception:
-          // on THIS first load, push up any local-only lead that never reached
-          // the server (e.g. a manual add that failed to sync) — once, then let
-          // the server own it from then on.
+          // verbatim — it has already filtered its own deletions, so DON'T
+          // re-filter here (a stale local blacklist entry must not hide a lead
+          // the server considers live). Push up any local-only lead once.
           if (Array.isArray(data.leads)) {
             const serverLeads = data.leads
-              .filter(l => l && l.phone && !isLeadBlacklisted(l, localDeletedIds))
+              .filter(l => l && l.phone)
               .map(l => ({
                 ...l,
                 source: sanitizeChannelName(l.source),
@@ -1822,6 +1818,18 @@
                 ad: l.ad || '',
                 report: l.report !== undefined ? String(l.report) : ''
               }));
+
+            // Housekeeping: anything the server shows as live is NOT deleted —
+            // drop it from the local blacklist so it can't cause trouble later.
+            const liveKeys = new Set();
+            serverLeads.forEach(l => {
+              if (l.id) liveKeys.add(String(l.id).trim());
+              if (l.phone) { liveKeys.add(String(l.phone).trim()); const c = extractThaiPhone(l.phone); if (c) liveKeys.add(c); }
+            });
+            localDeletedIds = localDeletedIds.filter(d => !liveKeys.has(String(d).trim()));
+            deletedBlacklistSet.clear();
+            localDeletedIds.forEach(d => deletedBlacklistSet.add(d));
+            try { localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(localDeletedIds.slice(-500))); } catch(e) {}
 
             const serverKeys = new Set(serverLeads.map(l => l.phone || l.id));
             const localOnly = (Array.isArray(leads) ? leads : []).filter(l =>
@@ -3106,11 +3114,12 @@ ${adSection}━━━━━━━━━━━━━━━━━━
           }
         }
 
-        // 2. Sync Leads: the server is authoritative — adopt its list exactly.
+        // 2. Sync Leads: the server is authoritative — adopt its list exactly
+        //    (no local blacklist re-filter; the server already excluded deletions).
         if (Array.isArray(data.leads)) {
           const sortedServer = sortLeadsByDate(
             data.leads
-              .filter(sl => sl && sl.phone && !isLeadBlacklisted(sl, localDeletedIds))
+              .filter(sl => sl && sl.phone)
               .map(sl => ({
                 ...sl,
                 source: sanitizeChannelName(sl.source),
@@ -3120,6 +3129,20 @@ ${adSection}━━━━━━━━━━━━━━━━━━
                 report: sl.report !== undefined ? String(sl.report) : ''
               }))
           );
+
+          // keep the local blacklist from growing stale against live leads
+          const liveKeys = new Set();
+          sortedServer.forEach(l => {
+            if (l.id) liveKeys.add(String(l.id).trim());
+            if (l.phone) { liveKeys.add(String(l.phone).trim()); const c = extractThaiPhone(l.phone); if (c) liveKeys.add(c); }
+          });
+          const trimmed = localDeletedIds.filter(d => !liveKeys.has(String(d).trim()));
+          if (trimmed.length !== localDeletedIds.length) {
+            localDeletedIds = trimmed;
+            deletedBlacklistSet.clear();
+            localDeletedIds.forEach(d => deletedBlacklistSet.add(d));
+            try { localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(localDeletedIds.slice(-500))); } catch(e) {}
+          }
 
           const currentJson = JSON.stringify(leads.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, tlr: l.teamLeadReport, cl: l.closed, a: l.ad, src: l.source, d: l.date, tm: l.time })));
           const serverJson = JSON.stringify(sortedServer.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, tlr: l.teamLeadReport, cl: l.closed, a: l.ad, src: l.source, d: l.date, tm: l.time })));
