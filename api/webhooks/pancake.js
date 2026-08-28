@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.29.4';
+const APP_VERSION = '2026.08.29.5';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1537,6 +1537,7 @@ module.exports = async (req, res) => {
     // server is authoritative and each stale client was re-injecting its own
     // accumulated cruft through the old union-merge. Only the single explicit
     // `payload.lead` change (edit / manual add) is applied.
+    let newlyAddedLead = null;
     if (payload?.lead) {
       // An explicit single-lead sync (edit or manual re-add) un-deletes it.
       unblacklistKeys(payload.lead);
@@ -1544,6 +1545,7 @@ module.exports = async (req, res) => {
       if (!target && payload.lead.phone) {
         target = { id: payload.lead.id || 'lead_' + Date.now(), sales: '', report: '', ...payload.lead };
         memoryLeads.unshift(target);
+        newlyAddedLead = target;  // manual "เพิ่มเคสเอง" / simulator → send to sheet
       }
       if (target) {
         if (payload.lead.report !== undefined) target.report = payload.lead.report;
@@ -1557,9 +1559,10 @@ module.exports = async (req, res) => {
         if (payload.lead.ad !== undefined) target.ad = payload.lead.ad;
       }
     }
-    // Google Sheets is NOT written on edits (that is what inflated the sheet).
-    // Only brand-new leads from the webhook are appended to the sheet.
+    // Google Sheets: append a row only for a genuinely NEW lead (manual add /
+    // simulator), never on edits — that is what used to inflate the sheet.
     await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
+    if (newlyAddedLead) { syncToGoogleSheets(newlyAddedLead).catch(() => {}); }
 
     recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_admin_state');
     return res.status(200).json({ 
