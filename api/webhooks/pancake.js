@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.29.2';
+const APP_VERSION = '2026.08.29.3';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -120,29 +120,6 @@ async function storageSave(dataObj) {
     req.write(payloadStr);
     req.end();
   });
-}
-
-// Union-merge two lead arrays by id/phone. Leads present only in `base`
-// (added on another device) are kept; overlapping leads take `incoming`'s
-// field values. Prevents the "lead vanishes when two devices sync" race.
-function mergeLeadArrays(base, incoming, blacklist) {
-  const map = new Map();
-  const keyOf = (l) => (l && (l.id || l.phone)) || null;
-  for (const l of (Array.isArray(base) ? base : [])) {
-    const k = keyOf(l);
-    if (k && !isBlacklistedLead(l, blacklist)) map.set(k, l);
-  }
-  // `incoming` is a client's current live view — do NOT blacklist-filter it here,
-  // or a legit lead whose phone collides with an old deletion gets permanently
-  // nuked on every sync. A genuine cross-device deletion still propagates within
-  // one poll cycle via the `deletedIds` list on the GET response.
-  for (const l of (Array.isArray(incoming) ? incoming : [])) {
-    const k = keyOf(l);
-    if (!k) continue;
-    const prev = map.get(k);
-    map.set(k, prev ? { ...prev, ...l } : l);
-  }
-  return sortLeadsByDate([...map.values()]);
 }
 
 // A previously-deleted phone/id being re-added (customer returned via webhook,
@@ -1485,11 +1462,9 @@ module.exports = async (req, res) => {
       }
     }
 
-    if (Array.isArray(payload?.leads)) {
-      memoryLeads = mergeLeadArrays(memoryLeads, payload.leads, memoryDeletedIds);
-    } else {
-      memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
-    }
+    // Ignore payload.leads (client's full list); just drop the blacklisted ones
+    // from our authoritative set.
+    memoryLeads = memoryLeads.filter(l => !isBlacklistedLead(l, memoryDeletedIds));
     await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
     recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'delete_lead_success');
     return res.status(200).json({ success: true, message: 'Lead deleted permanently', totalLeads: memoryLeads.length, deletedIds: memoryDeletedIds });
@@ -1558,11 +1533,10 @@ module.exports = async (req, res) => {
       return res.status(200).json({ success: true, message: 'Sales report updated', role: 'sales', deletedIds: memoryDeletedIds });
     }
 
-    // Admin has full control. Union-merge so a lead added on another device
-    // is not dropped when this device syncs its (older) full list.
-    if (Array.isArray(payload?.leads)) {
-      memoryLeads = mergeLeadArrays(memoryLeads, payload.leads, memoryDeletedIds);
-    }
+    // Admin. We deliberately IGNORE payload.leads (the client's full list) — the
+    // server is authoritative and each stale client was re-injecting its own
+    // accumulated cruft through the old union-merge. Only the single explicit
+    // `payload.lead` change (edit / manual add) is applied.
     if (payload?.lead) {
       // An explicit single-lead sync (edit or manual re-add) un-deletes it.
       unblacklistKeys(payload.lead);
