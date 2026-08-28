@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.29.6';
+const APP_VERSION = '2026.08.29.7';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1496,11 +1496,13 @@ module.exports = async (req, res) => {
           }
         }
       }
+      let salesSheetTarget = null;
       if (payload?.lead) {
         const target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
-        if (target && payload.lead.report !== undefined) target.report = payload.lead.report;
+        if (target && payload.lead.report !== undefined) { target.report = payload.lead.report; salesSheetTarget = target; }
       }
       await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
+      if (salesSheetTarget) { syncToGoogleSheets(salesSheetTarget).catch(() => {}); }
       recordAuditLog(req, clientIp, authUser.role, 200, 'sync_sales_report');
       return res.status(200).json({ success: true, message: 'Sales report updated', role: 'sales', deletedIds: memoryDeletedIds });
     }
@@ -1509,7 +1511,7 @@ module.exports = async (req, res) => {
     // server is authoritative and each stale client was re-injecting its own
     // accumulated cruft through the old union-merge. Only the single explicit
     // `payload.lead` change (edit / manual add) is applied.
-    let newlyAddedLead = null;
+    let sheetTarget = null;
     if (payload?.lead) {
       // An explicit single-lead sync (edit or manual re-add) un-deletes it.
       unblacklistKeys(payload.lead);
@@ -1517,7 +1519,6 @@ module.exports = async (req, res) => {
       if (!target && payload.lead.phone) {
         target = { id: payload.lead.id || 'lead_' + Date.now(), sales: '', report: '', ...payload.lead };
         memoryLeads.unshift(target);
-        newlyAddedLead = target;  // manual "เพิ่มเคสเอง" / simulator → send to sheet
       }
       if (target) {
         if (payload.lead.report !== undefined) target.report = payload.lead.report;
@@ -1529,12 +1530,13 @@ module.exports = async (req, res) => {
         if (payload.lead.source !== undefined) target.source = payload.lead.source;
         if (payload.lead.name !== undefined) target.name = payload.lead.name;
         if (payload.lead.ad !== undefined) target.ad = payload.lead.ad;
+        sheetTarget = target;
       }
     }
-    // Google Sheets: append a row only for a genuinely NEW lead (manual add /
-    // simulator), never on edits — that is what used to inflate the sheet.
+    // Push the changed lead to Google Sheets (new OR edited). The Apps Script
+    // upserts by phone, so an edit updates the existing row instead of adding one.
     await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
-    if (newlyAddedLead) { syncToGoogleSheets(newlyAddedLead).catch(() => {}); }
+    if (sheetTarget) { syncToGoogleSheets(sheetTarget).catch(() => {}); }
 
     recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_admin_state');
     return res.status(200).json({ 
