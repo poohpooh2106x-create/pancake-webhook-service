@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.29.7';
+const APP_VERSION = '2026.08.29.8';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1465,12 +1465,9 @@ module.exports = async (req, res) => {
   }
 
   if (action === 'sync_state') {
-    // Merge deletedIds if client sent any
-    if (Array.isArray(payload?.deletedIds)) {
-      for (const d of payload.deletedIds) {
-        if (d && !memoryDeletedIds.includes(d)) memoryDeletedIds.push(d);
-      }
-    }
+    // NOTE: sync_state does NOT touch the deletion blacklist. Only delete_lead
+    // may add to it. An old client kept pushing its bloated local blacklist here
+    // on every edit, which then filtered out legitimate leads server-wide.
 
     // Customizable lists: only accept when the client's copy is newer, so a
     // stale device syncing a lead edit cannot resurrect a deleted entry.
