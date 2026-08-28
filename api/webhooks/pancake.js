@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.28.8';
+const APP_VERSION = '2026.08.28.9';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -130,13 +130,35 @@ function mergeLeadArrays(base, incoming, blacklist) {
     const k = keyOf(l);
     if (k && !isBlacklistedLead(l, blacklist)) map.set(k, l);
   }
+  // `incoming` is a client's current live view — do NOT blacklist-filter it here,
+  // or a legit lead whose phone collides with an old deletion gets permanently
+  // nuked on every sync. A genuine cross-device deletion still propagates within
+  // one poll cycle via the `deletedIds` list on the GET response.
   for (const l of (Array.isArray(incoming) ? incoming : [])) {
     const k = keyOf(l);
-    if (!k || isBlacklistedLead(l, blacklist)) continue;
+    if (!k) continue;
     const prev = map.get(k);
     map.set(k, prev ? { ...prev, ...l } : l);
   }
   return sortLeadsByDate([...map.values()]);
+}
+
+// A previously-deleted phone/id being re-added (customer returned via webhook,
+// or an explicit re-add) must come OFF the blacklist — otherwise the permanent
+// by-phone blacklist silently nukes a legitimate new lead on every sync.
+function unblacklistKeys(lead) {
+  if (!lead) return;
+  const keys = new Set();
+  if (lead.id) keys.add(String(lead.id).trim());
+  if (lead.phone) {
+    const raw = String(lead.phone).trim();
+    keys.add(raw);
+    keys.add(raw.replace(/[\s\-\.\/]/g, ''));
+    const c = cleanThaiPhoneNumber(raw);
+    if (c) keys.add(c);
+    if (lead.name) keys.add(`${String(lead.name).trim()}_${raw}`);
+  }
+  if (keys.size) memoryDeletedIds = memoryDeletedIds.filter(d => !keys.has(String(d).trim()));
 }
 
 const DEFAULT_MASTER_LEADS = [
@@ -1515,7 +1537,13 @@ module.exports = async (req, res) => {
       memoryLeads = mergeLeadArrays(memoryLeads, payload.leads, memoryDeletedIds);
     }
     if (payload?.lead) {
-      const target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
+      // An explicit single-lead sync (edit or manual re-add) un-deletes it.
+      unblacklistKeys(payload.lead);
+      let target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
+      if (!target && payload.lead.phone) {
+        target = { id: payload.lead.id || 'lead_' + Date.now(), sales: '', report: '', ...payload.lead };
+        memoryLeads.unshift(target);
+      }
       if (target) {
         if (payload.lead.report !== undefined) target.report = payload.lead.report;
         if (payload.lead.teamLeadReport !== undefined) target.teamLeadReport = payload.lead.teamLeadReport;
@@ -1723,6 +1751,10 @@ module.exports = async (req, res) => {
         sales: '',
         report: ''
       };
+
+      // Customer messaged in again → they are a live lead, drop any stale
+      // blacklist entry for this phone so the sync filters don't nuke them.
+      unblacklistKeys(leadObj);
 
       // Check if lead exists in memoryLeads (e.g. old customer giving number again today)
       const existingIdx = memoryLeads.findIndex(l => (leadObj.id && l.id === leadObj.id) || l.phone === leadObj.phone);
