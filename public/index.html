@@ -713,7 +713,7 @@
         <span style="color: var(--border-light);">|</span>
         <span id="lastSyncTimeText">🟢 ซิงค์ล่าสุด: กำลังโหลด...</span>
         <span style="color: var(--border-light);">|</span>
-        <span id="appVersionBadge" style="background: var(--soft); border: 1px solid var(--border); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.28.7</span>
+        <span id="appVersionBadge" style="background: var(--soft); border: 1px solid var(--border); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.28.8</span>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span id="saveIndicator" style="color: var(--success); font-size: 11px; transition: opacity 0.3s; opacity: 0.8;"></span>
@@ -1475,7 +1475,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.08.28.7';
+    const APP_VERSION = '2026.08.28.8';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
@@ -1806,7 +1806,11 @@
             } catch(e) {}
           }
 
-          // Authoritative Cloud Leads: Merge with local leads so NO LEAD is EVER DROPPED!
+          // The server (Upstash) is the single source of truth. Adopt its list
+          // verbatim so every device shows the same thing. The only exception:
+          // on THIS first load, push up any local-only lead that never reached
+          // the server (e.g. a manual add that failed to sync) — once, then let
+          // the server own it from then on.
           if (Array.isArray(data.leads)) {
             const serverLeads = data.leads
               .filter(l => l && l.phone && !isLeadBlacklisted(l, localDeletedIds))
@@ -1819,33 +1823,20 @@
                 report: l.report !== undefined ? String(l.report) : ''
               }));
 
-            const masterMap = new Map();
-            leads.forEach(localLead => {
-              const key = localLead.phone || localLead.id;
-              if (key && !isLeadBlacklisted(localLead, localDeletedIds)) {
-                masterMap.set(key, localLead);
-              }
-            });
-            serverLeads.forEach(serverLead => {
-              const key = serverLead.phone || serverLead.id;
-              if (key && !isLeadBlacklisted(serverLead, localDeletedIds)) {
-                const local = masterMap.get(key) || {};
-                masterMap.set(key, {
-                  ...local,
-                  ...serverLead,
-                  source: sanitizeChannelName(serverLead.source || local.source),
-                  truck: serverLead.truck || local.truck || '',
-                  sales: sanitizeSalesName(serverLead.sales || local.sales),
-                  ad: serverLead.ad || local.ad || '',
-                  report: serverLead.report !== undefined ? String(serverLead.report) : (local.report || '')
-                });
-              }
-            });
+            const serverKeys = new Set(serverLeads.map(l => l.phone || l.id));
+            const localOnly = (Array.isArray(leads) ? leads : []).filter(l =>
+              l && l.phone && !serverKeys.has(l.phone || l.id) && !isLeadBlacklisted(l, localDeletedIds)
+            );
 
-            leads = sortLeadsByDate(Array.from(masterMap.values()));
+            leads = sortLeadsByDate(localOnly.length ? [...serverLeads, ...localOnly] : serverLeads);
             scannedMessageCount = leads.length;
             cleanseAllLocalStorages(localDeletedIds);
-            saveState(false); // Cache locally without loop to server
+            if (localOnly.length) {
+              console.log(`⬆️ [Reconcile] pushing ${localOnly.length} local-only lead(s) to server`);
+              saveState(true);  // push the unsynced extras up, then converge
+            } else {
+              saveState(false);
+            }
             updateAll();
           }
 
@@ -2050,8 +2041,6 @@
       try { updateCharts(); } catch(e) { console.warn('updateCharts error:', e); }
     }
 
-    const GOOGLE_SHEETS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzUdIU62Fx5-OS9Ldjx54O_HU5NJtt-C5RoFrF0k1OECVeTnFlyirdEheX6b88e8rBXmw/exec';
-
     function saveLeadState(lead) {
       saveState(true);
       try {
@@ -2061,18 +2050,9 @@
           body: JSON.stringify({ leads, truckTypes, channelSources, lead, truckTypesUpdatedAt: getListTs(TRUCKS_TS_KEY), channelsUpdatedAt: getListTs(CHANNELS_TS_KEY) })
         });
       } catch(e) {}
-
-      // Instant direct sync to Google Sheets from browser
-      if (lead && lead.phone) {
-        try {
-          fetch(GOOGLE_SHEETS_SCRIPT_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lead })
-          }).catch(() => {});
-        } catch(e) {}
-      }
+      // NOTE: no direct Google Sheets write here — every field edit used to append
+      // a new sheet row, which is why the sheet drifted far above the real count.
+      // The sheet now only receives a row when a brand-new lead arrives (webhook).
     }
 
     function renderMetrics() {
@@ -3126,47 +3106,23 @@ ${adSection}━━━━━━━━━━━━━━━━━━
           }
         }
 
-        // 2. Sync Leads: Non-destructive merge so no lead is ever lost!
+        // 2. Sync Leads: the server is authoritative — adopt its list exactly.
         if (Array.isArray(data.leads)) {
-          const cleanServerLeads = data.leads
-            .filter(sl => sl && sl.phone && !isLeadBlacklisted(sl, localDeletedIds))
-            .map(sl => ({
-              ...sl,
-              source: sanitizeChannelName(sl.source),
-              truck: sl.truck || '',
-              sales: sanitizeSalesName(sl.sales),
-              ad: sl.ad || '',
-              report: sl.report !== undefined ? String(sl.report) : ''
-            }));
+          const sortedServer = sortLeadsByDate(
+            data.leads
+              .filter(sl => sl && sl.phone && !isLeadBlacklisted(sl, localDeletedIds))
+              .map(sl => ({
+                ...sl,
+                source: sanitizeChannelName(sl.source),
+                truck: sl.truck || '',
+                sales: sanitizeSalesName(sl.sales),
+                ad: sl.ad || '',
+                report: sl.report !== undefined ? String(sl.report) : ''
+              }))
+          );
 
-          const masterMap = new Map();
-          leads.forEach(localLead => {
-            const key = localLead.phone || localLead.id;
-            if (key && !isLeadBlacklisted(localLead, localDeletedIds)) {
-              masterMap.set(key, localLead);
-            }
-          });
-          cleanServerLeads.forEach(serverLead => {
-            const key = serverLead.phone || serverLead.id;
-            if (key && !isLeadBlacklisted(serverLead, localDeletedIds)) {
-              const local = masterMap.get(key) || {};
-              masterMap.set(key, {
-                ...local,
-                ...serverLead,
-                source: sanitizeChannelName(serverLead.source || local.source),
-                truck: serverLead.truck || local.truck || '',
-                sales: sanitizeSalesName(serverLead.sales || local.sales),
-                ad: serverLead.ad || local.ad || '',
-                report: serverLead.report !== undefined ? String(serverLead.report) : (local.report || '')
-              });
-            }
-          });
-
-          const sortedServer = sortLeadsByDate(Array.from(masterMap.values()));
-          
-          // Check if data changed compared to current local state
-          const currentJson = JSON.stringify(leads.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, a: l.ad, src: l.source, d: l.date, tm: l.time })));
-          const serverJson = JSON.stringify(sortedServer.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, a: l.ad, src: l.source, d: l.date, tm: l.time })));
+          const currentJson = JSON.stringify(leads.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, tlr: l.teamLeadReport, cl: l.closed, a: l.ad, src: l.source, d: l.date, tm: l.time })));
+          const serverJson = JSON.stringify(sortedServer.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, tlr: l.teamLeadReport, cl: l.closed, a: l.ad, src: l.source, d: l.date, tm: l.time })));
 
           if (currentJson !== serverJson || leads.length !== sortedServer.length) {
             leads = sortedServer;
@@ -3174,7 +3130,7 @@ ${adSection}━━━━━━━━━━━━━━━━━━
             cleanseAllLocalStorages(localDeletedIds);
             saveState(false); // Update local cache without echo loop to server
             updateAll();
-            console.log(`☁️ [CloudSync] Real-time sync updated ${leads.length} leads at ${new Date().toLocaleTimeString('th-TH')}`);
+            console.log(`☁️ [CloudSync] adopted server list: ${leads.length} leads at ${new Date().toLocaleTimeString('th-TH')}`);
           }
         }
 

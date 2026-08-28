@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.28.7';
+const APP_VERSION = '2026.08.28.8';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1500,18 +1500,11 @@ module.exports = async (req, res) => {
           }
         }
       }
-      let salesSheetTarget = null;
       if (payload?.lead) {
         const target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
-        if (target && payload.lead.report !== undefined) {
-          target.report = payload.lead.report;
-          salesSheetTarget = target;
-        } else {
-          salesSheetTarget = payload.lead;
-        }
+        if (target && payload.lead.report !== undefined) target.report = payload.lead.report;
       }
       await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
-      if (salesSheetTarget) { syncToGoogleSheets(salesSheetTarget).catch(() => {}); }
       recordAuditLog(req, clientIp, authUser.role, 200, 'sync_sales_report');
       return res.status(200).json({ success: true, message: 'Sales report updated', role: 'sales', deletedIds: memoryDeletedIds });
     }
@@ -1521,7 +1514,6 @@ module.exports = async (req, res) => {
     if (Array.isArray(payload?.leads)) {
       memoryLeads = mergeLeadArrays(memoryLeads, payload.leads, memoryDeletedIds);
     }
-    let sheetSyncTarget = null;
     if (payload?.lead) {
       const target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
       if (target) {
@@ -1532,16 +1524,11 @@ module.exports = async (req, res) => {
         if (payload.lead.truck !== undefined) target.truck = payload.lead.truck;
         if (payload.lead.date !== undefined) target.date = payload.lead.date;
         if (payload.lead.source !== undefined) target.source = payload.lead.source;
-        sheetSyncTarget = target;
-      } else {
-        sheetSyncTarget = payload.lead;
       }
     }
-    // truckTypes / channels already handled above with timestamp gating
-    // Persist the shared cloud state FIRST (critical path for multi-device sync);
-    // Google Sheets is best-effort and must never block or pre-empt the cloud write.
+    // Google Sheets is NOT written on edits (that is what inflated the sheet).
+    // Only brand-new leads from the webhook are appended to the sheet.
     await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
-    if (sheetSyncTarget) { syncToGoogleSheets(sheetSyncTarget).catch(() => {}); }
 
     recordAuditLog(req, clientIp, authUser.role || 'admin', 200, 'sync_admin_state');
     return res.status(200).json({ 
