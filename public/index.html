@@ -713,7 +713,7 @@
         <span style="color: var(--border-light);">|</span>
         <span id="lastSyncTimeText">🟢 ซิงค์ล่าสุด: กำลังโหลด...</span>
         <span style="color: var(--border-light);">|</span>
-        <span id="appVersionBadge" style="background: var(--soft); border: 1px solid var(--border); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.29.8</span>
+        <span id="appVersionBadge" style="background: var(--soft); border: 1px solid var(--border); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-size: 11px;">v2026.08.29.9</span>
       </div>
       <div style="display: flex; align-items: center; gap: 10px;">
         <span id="saveIndicator" style="color: var(--success); font-size: 11px; transition: opacity 0.3s; opacity: 0.8;"></span>
@@ -1475,7 +1475,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.08.29.8';
+    const APP_VERSION = '2026.08.29.9';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
@@ -1831,9 +1831,9 @@
             localDeletedIds.forEach(d => deletedBlacklistSet.add(d));
             try { localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(localDeletedIds.slice(-500))); } catch(e) {}
 
-            // Pure adopt — the server is authoritative. Never push local-only
-            // leads up (that just dumped each device's accumulated cruft).
-            leads = sortLeadsByDate(serverLeads);
+            // Adopt the server list, but keep any change made in the last few
+            // seconds that has not round-tripped yet.
+            leads = sortLeadsByDate(applyPending(serverLeads));
             scannedMessageCount = leads.length;
             cleanseAllLocalStorages(localDeletedIds);
             saveState(false); // cache locally, do not echo to server
@@ -2041,7 +2041,36 @@
       try { updateCharts(); } catch(e) { console.warn('updateCharts error:', e); }
     }
 
+    // Leads changed locally in the last few seconds. A poll must not wipe these
+    // before the server has confirmed them (that was the "ใส่ข้อมูลแล้วหาย" bug).
+    const pendingChanges = new Map(); // key (phone||id) -> { lead, ts }
+    const PENDING_TTL_MS = 25000;
+
+    function markPending(lead) {
+      if (!lead) return;
+      const key = lead.phone || lead.id;
+      if (key) pendingChanges.set(key, { lead: { ...lead }, ts: Date.now() });
+    }
+
+    // Overlay still-pending local changes on top of the server list.
+    function applyPending(serverLeads) {
+      if (!pendingChanges.size) return serverLeads;
+      const now = Date.now();
+      const byKey = new Map(serverLeads.map(l => [l.phone || l.id, l]));
+      for (const [key, ent] of [...pendingChanges]) {
+        if (now - ent.ts > PENDING_TTL_MS) { pendingChanges.delete(key); continue; }
+        const srv = byKey.get(key);
+        if (!srv) {
+          serverLeads = [ent.lead, ...serverLeads];            // add not-yet-synced lead
+        } else {
+          Object.assign(srv, ent.lead);                        // keep just-edited fields
+        }
+      }
+      return serverLeads;
+    }
+
     function saveLeadState(lead) {
+      markPending(lead);
       saveState(true);
       try {
         fetchWithAuth('/api/webhooks/pancake?action=sync_state', {
@@ -2050,9 +2079,6 @@
           body: JSON.stringify({ leads, truckTypes, channelSources, lead, truckTypesUpdatedAt: getListTs(TRUCKS_TS_KEY), channelsUpdatedAt: getListTs(CHANNELS_TS_KEY) })
         });
       } catch(e) {}
-      // NOTE: no direct Google Sheets write here — every field edit used to append
-      // a new sheet row, which is why the sheet drifted far above the real count.
-      // The sheet now only receives a row when a brand-new lead arrives (webhook).
     }
 
     function renderMetrics() {
@@ -3136,11 +3162,13 @@ ${adSection}━━━━━━━━━━━━━━━━━━
             try { localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(localDeletedIds.slice(-500))); } catch(e) {}
           }
 
-          const currentJson = JSON.stringify(leads.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, tlr: l.teamLeadReport, cl: l.closed, a: l.ad, src: l.source, d: l.date, tm: l.time })));
-          const serverJson = JSON.stringify(sortedServer.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, tlr: l.teamLeadReport, cl: l.closed, a: l.ad, src: l.source, d: l.date, tm: l.time })));
+          const merged = sortLeadsByDate(applyPending(sortedServer));
 
-          if (currentJson !== serverJson || leads.length !== sortedServer.length) {
-            leads = sortedServer;
+          const currentJson = JSON.stringify(leads.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, tlr: l.teamLeadReport, cl: l.closed, a: l.ad, src: l.source, d: l.date, tm: l.time })));
+          const serverJson = JSON.stringify(merged.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, tlr: l.teamLeadReport, cl: l.closed, a: l.ad, src: l.source, d: l.date, tm: l.time })));
+
+          if (currentJson !== serverJson || leads.length !== merged.length) {
+            leads = merged;
             scannedMessageCount = leads.length;
             cleanseAllLocalStorages(localDeletedIds);
             saveState(false); // Update local cache without echo loop to server
