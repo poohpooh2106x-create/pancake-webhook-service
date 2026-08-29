@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.30.2';
+const APP_VERSION = '2026.08.30.3';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1368,25 +1368,22 @@ module.exports = async (req, res) => {
       const existingIdx = memoryLeads.findIndex(l => (leadObj.id && l.id === leadObj.id) || l.phone === leadObj.phone);
       const isBrandNew = existingIdx === -1;
       if (existingIdx !== -1) {
-        // Move existing lead to the TOP and refresh timestamp to TODAY & NOW!
+        // Existing lead messaged again. KEEP the original date/time (when they
+        // first became a lead) — bumping it made "yesterday's leads" jump to
+        // today. Only fill in details that are still missing/better.
         const existing = memoryLeads[existingIdx];
         existing.phone = validPhone;
-        existing.date = date;
-        existing.time = time;
-        existing.source = finalSource;
-        if (adSource) existing.ad = adSource;
-        if (customerName !== 'ลูกค้า PanCake') existing.name = customerName;
-        if (truck) existing.truck = truck;
+        if (!existing.source) existing.source = finalSource;
+        if (adSource && !existing.ad) existing.ad = adSource;
+        if (customerName !== 'ลูกค้า PanCake' && (!existing.name || existing.name === 'ลูกค้า PanCake')) existing.name = customerName;
+        if (truck && !existing.truck) existing.truck = truck;
 
+        leadObj.date = existing.date;
+        leadObj.time = existing.time;
         leadObj.ad = existing.ad || adSource;
         leadObj.sales = existing.sales || '';
         leadObj.truck = existing.truck || truck || '';
         leadObj.report = existing.report || '';
-
-
-        // Move to the top of memory list!
-        memoryLeads.splice(existingIdx, 1);
-        memoryLeads.unshift(existing);
       } else {
         memoryLeads.unshift(leadObj);
       }
