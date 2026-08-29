@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.29.9';
+const APP_VERSION = '2026.08.30.1';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -72,17 +72,16 @@ function legacyObjectLoad() {
   });
 }
 
+// Returns the stored state object, or {} if the key genuinely doesn't exist yet.
+// THROWS on a real read error so callers can tell "empty" from "unreachable".
 async function storageLoad() {
-  if (!USE_UPSTASH) return legacyObjectLoad();
-  try {
-    const raw = await upstashCommand(['GET', STORAGE_KEY]);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.error('storageLoad (upstash) error:', e.message);
-    return null;
+  if (!USE_UPSTASH) {
+    const legacy = await legacyObjectLoad();
+    return legacy || {};
   }
-  // First run on Upstash: seed from the old restful-api.dev object so the
-  // existing leads carry over instead of resetting to the hardcoded defaults.
+  const raw = await upstashCommand(['GET', STORAGE_KEY]);  // throws on network/HTTP error
+  if (raw) return JSON.parse(raw);
+  // Key empty (first run): try to seed once from the old restful-api.dev object.
   try {
     const seed = await legacyObjectLoad();
     if (seed && (Array.isArray(seed.leads) || Array.isArray(seed.recentLeads))) {
@@ -93,7 +92,7 @@ async function storageLoad() {
   } catch (e) {
     console.error('storageLoad seed error:', e.message);
   }
-  return null;
+  return {};
 }
 
 // Persist the shared state object. Returns true on success.
@@ -140,395 +139,16 @@ function unblacklistKeys(lead) {
   if (keys.size) memoryDeletedIds = memoryDeletedIds.filter(d => !keys.has(String(d).trim()));
 }
 
-const DEFAULT_MASTER_LEADS = [
-  {
-    id: "lead_20260826_084901_0612833830",
-    date: "26/08/2026",
-    time: "8:49:01",
-    name: "Phichit Tepchomphoo",
-    phone: "0612833830",
-    source: "FB เคพีศรีราชา",
-    truck: "",
-    sales: "",
-    ad: "[ AI EXPERT ADS ] - รถตัด และ",
-    report: ""
-  },
-  {
-    id: "lead_20260825_163233_0832420639",
-    date: "25/08/2026",
-    time: "16:32:33",
-    name: "Jirapan Thongsamrit",
-    phone: "0832420639",
-    source: "FB เคพีศรีราชา",
-    truck: "หาง",
-    sales: "",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260825_162700_0632394248",
-    date: "25/08/2026",
-    time: "16:27:00",
-    name: "ปกรณ์",
-    phone: "0632394248",
-    source: "Marketplace",
-    truck: "เครน",
-    sales: "ปุ๊ก",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260825_155252_0879462785",
-    date: "25/08/2026",
-    time: "15:52:52",
-    name: "จิรชญา จันทร์สุรินทร์",
-    phone: "0879462785",
-    source: "FB เคพีศรีราชา",
-    truck: "เครน",
-    sales: "เกด",
-    ad: "",
-    report: "ส่งเสนอราคาใบปิดดูลูกค้าคะ"
-  },
-  {
-    id: "lead_20260825_153741_0615163625",
-    date: "25/08/2026",
-    time: "15:37:41",
-    name: "Nok Raungchai",
-    phone: "0615163625",
-    source: "FB เคพีศรีราชา",
-    truck: "เครน",
-    sales: "เกด",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260825_152454_0992574678",
-    date: "25/08/2026",
-    time: "15:24:54",
-    name: "เอกพล ชุมทองจิตร",
-    phone: "0992574678",
-    source: "FB เคพีศรีราชา",
-    truck: "โดยสาร",
-    sales: "เกด",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260825_143347_0807562789",
-    date: "25/08/2026",
-    time: "14:33:47",
-    name: "ปรีชา ดารช",
-    phone: "0807562789",
-    source: "FB เคพีศรีราชา",
-    truck: "ถังน้ำขี้",
-    sales: "ท็อป",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260825_143007_0654642972",
-    date: "25/08/2026",
-    time: "14:30:07",
-    name: "พำรุต พำรี เดอร์ลอย",
-    phone: "0654642972",
-    source: "FB เคพีศรีราชา",
-    truck: "รถน้ำ",
-    sales: "จิ๊บ",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260825_141924_0959847717",
-    date: "25/08/2026",
-    time: "14:19:24",
-    name: "ประเสริฐ ณ.บุรีรัมย์",
-    phone: "0959847717",
-    source: "FB เคพีศรีราชา",
-    truck: "ตู้10",
-    sales: "",
-    ad: "",
-    report: "รถคันแรก วิ่งผลดาวน์200,000ทักหาส่งรูปและรายละเอียดเรียบร้อยครับกรุณาติดต่อลูกค้าทันทีครับ"
-  },
-  {
-    id: "lead_20260825_140021_0980671323",
-    date: "25/08/2026",
-    time: "14:00:21",
-    name: "Bank'k Suwannatep",
-    phone: "0980671323",
-    source: "FB เคพีศรีราชา",
-    truck: "คอก",
-    sales: "วุธ",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260825_123512_0807242982",
-    date: "25/08/2026",
-    time: "12:35:12",
-    name: "Amrat Boonkong",
-    phone: "0807242982",
-    source: "FB เคพีศรีราชา",
-    truck: "",
-    sales: "เกด",
-    ad: "",
-    report: "ลูกค้าหารถ 10 ล้อหัวลากที่มีเครน 5-8 ตัน ใช้วิ่ง 380/400 แรง ค่ะ"
-  },
-  {
-    id: "lead_20260825_111009_0805425918",
-    date: "25/08/2026",
-    time: "11:10:09",
-    name: "Viroj Bussaplay",
-    phone: "0805425918",
-    source: "FB เคพีศรีราชา",
-    truck: "ตู้10",
-    sales: "เกด",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260825_083635_0610098596",
-    date: "25/08/2026",
-    time: "8:36:35",
-    name: "นายจรูญ ชนะงาม",
-    phone: "0610098596",
-    source: "FB เคพีศรีราชา",
-    truck: "หาง",
-    sales: "จิ๊บ",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260824_204324_0642723396",
-    date: "24/08/2026",
-    time: "20:43:24",
-    name: "พงษ์นนท์ นันทพันธ์",
-    phone: "0642723396",
-    source: "FB เคพีศรีราชา",
-    truck: "ตู้10",
-    sales: "เกด",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260824_180651_0819804209",
-    date: "24/08/2026",
-    time: "18:06:51",
-    name: "Kheng Sa-uenram",
-    phone: "0819804209",
-    source: "FB เคพีศรีราชา",
-    truck: "ตู้10",
-    sales: "เกด",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260824_155459_0986176747",
-    date: "24/08/2026",
-    time: "15:54:59",
-    name: "Nay Win",
-    phone: "0986176747",
-    source: "Marketplace",
-    truck: "โดยสาร",
-    sales: "ปุ๊ก",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260824_154154_0958905989",
-    date: "24/08/2026",
-    time: "15:41:54",
-    name: "Anurak",
-    phone: "0958905989",
-    source: "Marketplace",
-    truck: "โดยสาร",
-    sales: "เฟิร์น",
-    ad: "",
-    report: "ติดต่อ 16.48 น. คุยรายละเอียดเรื่องรถ ลูกค้าสนใจเป็น 4 ล้อจัมโบ้อยากได้เป็นแบบคอกตอนนี้กำลังหารถอยู่"
-  },
-  {
-    id: "lead_20260824_141015_0928875844",
-    date: "24/08/2026",
-    time: "14:10:15",
-    name: "อภิเชษฐ์ เจริญลาภ",
-    phone: "0928875844",
-    source: "FB เคพีศรีราชา",
-    truck: "หัวลาก",
-    sales: "วุธ",
-    ad: "",
-    report: "ชื่อ เปียกครับแตก อาชีพ ไม่ค่อยเข้าเงื่อนไข อยู่ ต่างจังหวัด สอบถามข้อมูลไว้ จะโทรมาหาใหม่ ถ้า ปรึกษากับแฟนแล้ว"
-  },
-  {
-    id: "lead_20260824_135838_0868924419",
-    date: "24/08/2026",
-    time: "13:58:38",
-    name: "สุวิทย์ เหมนเสถียรย์",
-    phone: "0868924419",
-    source: "FB เคพีศรีราชา",
-    truck: "ตู้10",
-    sales: "เฟิร์น",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260824_112010_0840957477",
-    date: "24/08/2026",
-    time: "11:20:10",
-    name: "Sathaporn Piyaboonpanya",
-    phone: "0840957477",
-    source: "FB เคพีศรีราชา",
-    truck: "ตู้10",
-    sales: "จิ๊บ",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260824_111530_0930189287",
-    date: "24/08/2026",
-    time: "11:15:30",
-    name: "chili(มะขี)",
-    phone: "0930189287",
-    source: "FB เคพีศรีราชา",
-    truck: "โดยสาร",
-    sales: "ปุ๊ก",
-    ad: "",
-    report: "ลูกค้าต้องการ รถสองแถว ราคา 3-4 แสน ซื้อเงินสด เสนอราคา หกล้อถอยหลังส่งคาไปแล้ว รอเสนอสองแถวเพิ่ม"
-  },
-  {
-    id: "lead_20260824_101713_0963577542",
-    date: "24/08/2026",
-    time: "10:17:13",
-    name: "Theeraphat Nuhoung",
-    phone: "0963577542",
-    source: "FB เคพีศรีราชา",
-    truck: "ตู้10",
-    sales: "เฟิร์น",
-    ad: "[ AI EXPERT ADS ] - รถตัด และ",
-    report: "โทรติดต่อแล้ว ลูกค้าสนใจเข้ามาดูรถวันเสาร์"
-  },
-  {
-    id: "lead_20260824_100153_0653169838",
-    date: "24/08/2026",
-    time: "10:01:53",
-    name: "ศุภรัตน์ นาคพงศ์",
-    phone: "0653169838",
-    source: "FB เคพีศรีราชา",
-    truck: "ตู้10",
-    sales: "เฟิร์น",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260824_092504_0828758814",
-    date: "24/08/2026",
-    time: "09:25:04",
-    name: "Ome Boonyai",
-    phone: "0828758814",
-    source: "FB เคพีศรีราชา",
-    truck: "ตู้10",
-    sales: "จิ๊บ",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260824_091109_0850271577",
-    date: "24/08/2026",
-    time: "09:11:09",
-    name: "สายชล ศรีงามขำ",
-    phone: "0850271577",
-    source: "FB เคพีศรีราชา",
-    truck: "คอก",
-    sales: "วุธ",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260822_114927_0997316431",
-    date: "22/08/2026",
-    time: "11:49:27",
-    name: "ประภาษิต สานนอก",
-    phone: "0997316431",
-    source: "FB เคพีศรีราชา",
-    truck: "หัวลาก",
-    sales: "ท็อป",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260822_114915_0988918611",
-    date: "22/08/2026",
-    time: "11:49:15",
-    name: "ชีวิตคือ การเดินทาง",
-    phone: "0988918611",
-    source: "FB เคพีศรีราชา",
-    truck: "หัวลาก",
-    sales: "เกด",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260822_114419_0961917277",
-    date: "22/08/2026",
-    time: "11:44:19",
-    name: "Supattana Wongkom",
-    phone: "0961917277",
-    source: "FB เคพีศรีราชา",
-    truck: "เครน",
-    sales: "เกด",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260822_114825_0997316432",
-    date: "22/08/2026",
-    time: "11:48:25",
-    name: "ประภาษิต สานนอก",
-    phone: "0997316432",
-    source: "FB เคพีศรีราชา",
-    truck: "หัวลาก",
-    sales: "",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260822_162140_0897402202",
-    date: "22/08/2026",
-    time: "16:21:40",
-    name: "ณัฐพงษ์ บุญวงค์",
-    phone: "0897402202",
-    source: "FB เคพีศรีราชา",
-    truck: "หัวลาก",
-    sales: "",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260822_162118_0865401249",
-    date: "22/08/2026",
-    time: "16:21:18",
-    name: "นาย อำนวยชัย",
-    phone: "0865401249",
-    source: "FB เคพีศรีราชา",
-    truck: "หัวลาก",
-    sales: "",
-    ad: "",
-    report: ""
-  },
-  {
-    id: "lead_20260822_160248_0817251742",
-    date: "22/08/2026",
-    time: "16:02:48",
-    name: "Sawai Sinoun",
-    phone: "0817251742",
-    source: "FB เคพีศรีราชา",
-    truck: "หัวลาก",
-    sales: "วุธ",
-    ad: "",
-    report: ""
-  }
-];
+// DEFAULT_MASTER_LEADS removed — it resurrected deleted leads whenever a
+// cloud read failed. Storage (Upstash) is the only source of truth now.
 
-// Local Memory Cache (Loaded dynamically from Cloud Database via fetchCloudData)
-let memoryLeads = [...DEFAULT_MASTER_LEADS];
+// Local Memory Cache (Loaded from Upstash via fetchCloudData). Starts EMPTY —
+// DEFAULT_MASTER_LEADS is only a first-run seed, never a fallback, or old
+// deleted leads resurrect when a cloud read fails.
+let memoryLeads = [];
+// Was the most recent cloud read successful? If not, we must not overwrite
+// storage (that is how the 32 hardcoded defaults got persisted back).
+let lastCloudReadOk = false;
 let memoryTruckTypes = ['หัวลาก', 'ตู้10', 'หาง', 'เครน', 'โดยสาร', 'คอก', 'รถน้ำ', 'ถังน้ำขี้', 'ดั๊ม', '6 ล้อ', 'อื่นๆ'];
 let memoryChannels = ['FB เคพีศรีราชา', 'TikTok', 'LOA เคพี', 'FB เฮียตั้มรถติด', 'Marketplace', 'อื่นๆ'];
 let memoryDeletedIds = [];
@@ -951,11 +571,13 @@ function extractAdSource(payload) {
 
 async function fetchCloudData() {
   const memSnapshot = () => ({ leads: memoryLeads, truckTypes: memoryTruckTypes, channels: memoryChannels, deletedIds: memoryDeletedIds, logs: webhookLogs });
-  if (process.env.NODE_ENV === 'test') return memSnapshot();
+  if (process.env.NODE_ENV === 'test') { lastCloudReadOk = true; return memSnapshot(); }
 
+  lastCloudReadOk = false;
   let data = null;
   try { data = await storageLoad(); } catch (e) { data = null; }
-  if (!data || typeof data !== 'object') return memSnapshot();
+  if (!data || typeof data !== 'object') return memSnapshot();  // read failed → lastCloudReadOk stays false
+  lastCloudReadOk = true;
 
   if (Array.isArray(data.deletedIds)) {
     for (const d of data.deletedIds) {
@@ -1047,6 +669,13 @@ async function saveCloudData(leadsList, truckTypesList, logsList, deletedIdsList
 
   if (process.env.NODE_ENV === 'test') {
     return Promise.resolve(true);
+  }
+
+  // Never overwrite storage when the last read failed — memoryLeads may be
+  // empty or partial, and persisting it would wipe / regress everyone's data.
+  if (!lastCloudReadOk) {
+    console.warn('saveCloudData: skipped — last cloud read failed, refusing to overwrite');
+    return false;
   }
 
   // Persist the FULL shared state (Upstash has no practical size limit).
@@ -1393,6 +1022,7 @@ module.exports = async (req, res) => {
       status: 'online',
       platform: 'vercel',
       storage: USE_UPSTASH ? 'upstash' : 'legacy',
+      leadsReadOk: lastCloudReadOk,
       appVersion: APP_VERSION,
       serverTimestamp: Date.now(),
       serverTime: `${thaiDate} ${thaiTime}`,
