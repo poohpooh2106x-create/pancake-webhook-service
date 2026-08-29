@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.08.30.1';
+const APP_VERSION = '2026.08.30.2';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1325,6 +1325,7 @@ module.exports = async (req, res) => {
     // cloud state already refreshed once at the top of the handler
     const rowsToAppend = [];
     const newLeads = [];
+    const brandNewLeads = [];
 
     for (const item of itemsToProcess) {
       const customerName = (item.name || 'ลูกค้า PanCake').trim();
@@ -1365,6 +1366,7 @@ module.exports = async (req, res) => {
 
       // Check if lead exists in memoryLeads (e.g. old customer giving number again today)
       const existingIdx = memoryLeads.findIndex(l => (leadObj.id && l.id === leadObj.id) || l.phone === leadObj.phone);
+      const isBrandNew = existingIdx === -1;
       if (existingIdx !== -1) {
         // Move existing lead to the TOP and refresh timestamp to TODAY & NOW!
         const existing = memoryLeads[existingIdx];
@@ -1393,24 +1395,24 @@ module.exports = async (req, res) => {
 
       newLeads.push(leadObj);
 
-      rowsToAppend.push([
-        date,
-        time,
-        finalSource,
-        adSource,
-        customerName,
-        `'${validPhone}`,
-        truck,
-        '', '', '', '', '', '', ''
-      ]);
+      // Only append to the sheet for a genuinely NEW customer. A webhook that
+      // just re-touches an existing lead (customer messages again, PanCake
+      // replays an event) must not spam a new sheet row.
+      if (isBrandNew) {
+        brandNewLeads.push(leadObj);
+        rowsToAppend.push([
+          date, time, finalSource, adSource, customerName,
+          `'${validPhone}`, truck, '', '', '', '', '', '', ''
+        ]);
+      }
     }
 
     // Save updated leads and persistent logs to Cloud Database immediately!
     await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs);
 
-    // Sync new leads to Google Sheets via Apps Script Webhook
-    if (newLeads.length > 0) {
-      await syncToGoogleSheets(newLeads);
+    // Sync only the brand-new leads to Google Sheets
+    if (brandNewLeads.length > 0) {
+      await syncToGoogleSheets(brandNewLeads);
     }
 
     // If Google Sheets Service Account is configured, also append to Sheets
