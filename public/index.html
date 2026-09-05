@@ -1048,7 +1048,7 @@
         </div>
         <div style="display: flex; align-items: center; gap: 6px;">
           <span style="font-size: 11px; color: var(--text-muted);">หรือเลือกวันที่:</span>
-          <input type="date" id="reportDatePicker" class="search-input" style="width: 140px; padding: 4px 8px; font-size: 11px;" onchange="setReportCustomDate(this.value)">
+          <input type="date" id="reportDatePicker" class="search-input" style="width: 140px; padding: 4px 8px; font-size: 11px;" onchange="setReportCustomDate(this.value)" onclick="if (this.showPicker) { try { this.showPicker(); } catch(e) {} }">
         </div>
       </div>
 
@@ -1528,7 +1528,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.09.05.2';
+    const APP_VERSION = '2026.09.05.3';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
