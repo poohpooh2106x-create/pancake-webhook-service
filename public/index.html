@@ -1046,9 +1046,10 @@
           <button class="btn-refresh rep-filter-btn" id="repBtnMonth" onclick="setReportPeriod('month', this)">เดือนนี้</button>
           <button class="btn-refresh rep-filter-btn" id="repBtnAll" onclick="setReportPeriod('all', this)">ทั้งหมด</button>
         </div>
-        <div style="display: flex; align-items: center; gap: 6px;">
+        <div style="display: flex; align-items: center; gap: 6px; position: relative;">
           <span style="font-size: 11px; color: var(--text-muted);">หรือเลือกวันที่:</span>
-          <input type="date" id="reportDatePicker" class="search-input" style="width: 140px; padding: 4px 8px; font-size: 11px;" onchange="setReportCustomDate(this.value)" onclick="if (this.showPicker) { try { this.showPicker(); } catch(e) {} }">
+          <button type="button" id="reportDatePickerBtn" class="search-input" style="width: 140px; padding: 4px 8px; font-size: 11px; text-align: left; cursor: pointer;" onclick="toggleReportCalendar(event)">📅 เลือกวันที่</button>
+          <div id="reportCalendarDropdown" style="display: none; position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 50; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.25); width: 220px;"></div>
         </div>
       </div>
 
@@ -1528,7 +1529,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.09.05.3';
+    const APP_VERSION = '2026.09.05.4';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
@@ -2592,6 +2593,9 @@
 
     function setReportPeriod(period, btnElement) {
       currentReportPeriod = period;
+      currentReportCustomDate = '';
+      const dateBtn = document.getElementById('reportDatePickerBtn');
+      if (dateBtn) dateBtn.textContent = '📅 เลือกวันที่';
       document.querySelectorAll('.rep-filter-btn').forEach(b => {
         b.style.background = 'var(--bg-dark)';
         b.style.color = 'var(--text-muted)';
@@ -2617,8 +2621,88 @@
         b.style.borderColor = 'var(--border)';
       });
 
+      const [y, m, d] = val.split('-');
+      const btn = document.getElementById('reportDatePickerBtn');
+      if (btn) btn.textContent = `📅 ${d}/${m}/${y}`;
+
       renderReportData();
     }
+
+    // Custom calendar dropdown — avoids relying on the native <input type="date">
+    // picker, which some browsers/webviews fail to open on click.
+    let reportCalendarViewYear = null;
+    let reportCalendarViewMonth = null; // 0-11
+
+    function toggleReportCalendar(e) {
+      e.stopPropagation();
+      const dropdown = document.getElementById('reportCalendarDropdown');
+      const isOpen = dropdown.style.display !== 'none';
+      if (isOpen) {
+        dropdown.style.display = 'none';
+        return;
+      }
+      const base = currentReportCustomDate ? new Date(`${currentReportCustomDate}T00:00:00`) : new Date();
+      reportCalendarViewYear = base.getFullYear();
+      reportCalendarViewMonth = base.getMonth();
+      renderReportCalendar();
+      dropdown.style.display = 'block';
+    }
+
+    function shiftReportCalendarMonth(delta, e) {
+      if (e) e.stopPropagation();
+      reportCalendarViewMonth += delta;
+      if (reportCalendarViewMonth < 0) { reportCalendarViewMonth = 11; reportCalendarViewYear--; }
+      if (reportCalendarViewMonth > 11) { reportCalendarViewMonth = 0; reportCalendarViewYear++; }
+      renderReportCalendar();
+    }
+
+    function renderReportCalendar() {
+      const dropdown = document.getElementById('reportCalendarDropdown');
+      const thaiMonths = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+      const y = reportCalendarViewYear, m = reportCalendarViewMonth;
+      const firstDay = new Date(y, m, 1).getDay();
+      const daysInMonth = new Date(y, m + 1, 0).getDate();
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      let cells = '';
+      for (let i = 0; i < firstDay; i++) cells += '<div></div>';
+      for (let d = 1; d <= daysInMonth; d++) {
+        const iso = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const isToday = iso === todayStr;
+        const isSelected = iso === currentReportCustomDate;
+        let bg = 'transparent', color = 'var(--text)', border = '1px solid transparent';
+        if (isSelected) { bg = 'var(--primary)'; color = '#fff'; }
+        else if (isToday) { border = '1px solid var(--primary)'; }
+        cells += `<div onclick="selectReportCalendarDate('${iso}', event)" style="cursor:pointer; text-align:center; padding:4px 0; border-radius:6px; font-size:11px; background:${bg}; color:${color}; border:${border};">${d}</div>`;
+      }
+
+      dropdown.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <button type="button" onclick="shiftReportCalendarMonth(-1, event)" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:13px; padding:2px 6px;">‹</button>
+          <span style="font-size:12px; color:var(--text); font-weight:600;">${thaiMonths[m]} ${y + 543}</span>
+          <button type="button" onclick="shiftReportCalendarMonth(1, event)" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:13px; padding:2px 6px;">›</button>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px; font-size:10px; color:var(--text-muted); text-align:center; margin-bottom:4px;">
+          <div>อา</div><div>จ</div><div>อ</div><div>พ</div><div>พฤ</div><div>ศ</div><div>ส</div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px;">${cells}</div>
+      `;
+    }
+
+    function selectReportCalendarDate(iso, e) {
+      if (e) e.stopPropagation();
+      setReportCustomDate(iso);
+      document.getElementById('reportCalendarDropdown').style.display = 'none';
+    }
+
+    document.addEventListener('click', (e) => {
+      const dropdown = document.getElementById('reportCalendarDropdown');
+      const btn = document.getElementById('reportDatePickerBtn');
+      if (!dropdown || dropdown.style.display === 'none') return;
+      if (e.target !== dropdown && !dropdown.contains(e.target) && e.target !== btn) {
+        dropdown.style.display = 'none';
+      }
+    });
 
     function parseLeadDate(dateStr) {
       if (!dateStr) return null;
