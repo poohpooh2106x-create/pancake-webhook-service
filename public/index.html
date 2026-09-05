@@ -1112,49 +1112,28 @@
         </div>
       </div>
 
-      <!-- Channel & Ad-category Summary (matches user's weekly Excel report) -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
-        <!-- Left: Channel Summary -->
-        <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 12px; max-height: 240px; overflow-y: auto;">
-          <div style="font-size: 12px; font-weight: 600; color: var(--success); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 6px;">
-            <span>📡 สรุปตามช่องทาง</span>
-            <span style="display: flex; align-items: center; gap: 4px; font-weight: 400;">
-              <span style="color: var(--text-muted); font-size: 10px;">เป้าหมาย:</span>
-              <input type="number" id="repChannelGoal" class="search-input" style="width: 60px; padding: 2px 6px; font-size: 11px;" placeholder="-" oninput="saveReportGoal(this.value); renderReportData();">
-            </span>
-          </div>
-          <table style="width: 100%; font-size: 11px;">
-            <thead>
-              <tr style="border-bottom: 1px solid var(--wash-2);">
-                <th style="padding: 4px 6px; text-align: left;">ช่องทาง</th>
-                <th style="padding: 4px 6px; text-align: right;">ทั้งหมด</th>
-                <th style="padding: 4px 6px; text-align: right;">มีเซลล์</th>
-                <th style="padding: 4px 6px; text-align: right;">ไม่มีเซลล์</th>
-              </tr>
-            </thead>
-            <tbody id="repChannelTableBody">
-              <!-- Populated by JS -->
-            </tbody>
-          </table>
+      <!-- Channel Summary (matches user's weekly Excel report) -->
+      <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 12px; max-height: 240px; overflow-y: auto; margin-bottom: 16px;">
+        <div style="font-size: 12px; font-weight: 600; color: var(--success); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+          <span>📡 สรุปตามช่องทาง</span>
+          <span style="display: flex; align-items: center; gap: 4px; font-weight: 400;">
+            <span style="color: var(--text-muted); font-size: 10px;">เป้าหมาย:</span>
+            <input type="number" id="repChannelGoal" class="search-input" style="width: 60px; padding: 2px 6px; font-size: 11px;" placeholder="-" oninput="saveReportGoal(this.value); renderReportData();">
+          </span>
         </div>
-
-        <!-- Right: Ad Category Summary -->
-        <div style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 12px; max-height: 240px; overflow-y: auto;">
-          <div style="font-size: 12px; font-weight: 600; color: var(--primary); margin-bottom: 8px;">
-            <span>🎬 สรุปคลิปที่ลูกค้าดู</span>
-          </div>
-          <table style="width: 100%; font-size: 11px;">
-            <thead>
-              <tr style="border-bottom: 1px solid var(--wash-2);">
-                <th style="padding: 4px 6px; text-align: left;">หมวด</th>
-                <th style="padding: 4px 6px; text-align: right;">จำนวน</th>
-              </tr>
-            </thead>
-            <tbody id="repAdCategoryTableBody">
-              <!-- Populated by JS -->
-            </tbody>
-          </table>
-        </div>
+        <table style="width: 100%; font-size: 11px;">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--wash-2);">
+              <th style="padding: 4px 6px; text-align: left;">ช่องทาง</th>
+              <th style="padding: 4px 6px; text-align: right;">ทั้งหมด</th>
+              <th style="padding: 4px 6px; text-align: right;">มีเซลล์</th>
+              <th style="padding: 4px 6px; text-align: right;">ไม่มีเซลล์</th>
+            </tr>
+          </thead>
+          <tbody id="repChannelTableBody">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
       </div>
 
       <!-- Team Summary -->
@@ -1179,7 +1158,7 @@
           📋 คัดลอกสรุปส่งไลน์กลุ่ม (LINE Report)
         </button>
         <button class="btn" style="background: var(--primary); color: white; font-weight: 500; border: none; padding: 10px 18px;" onclick="copyChannelTeamReportToLine()">
-          📋 คัดลอกรายงานรายสัปดาห์ (ช่องทาง/คลิป/ทีม)
+          📋 คัดลอกรายงานรายสัปดาห์ (ช่องทาง/ทีม)
         </button>
         <button class="btn btn-excel" onclick="exportReportPeriodCSV()">
           📥 ส่งออก Excel ช่วงนี้ (CSV)
@@ -1230,27 +1209,6 @@
       { team: 'ทีม B', members: ['เฟิร์น', 'วุธ'] },
       { team: 'ทีม C', members: ['ท็อป', 'เกด', 'ม่า'] }
     ];
-
-    // Ad/clip category detection by keyword in the ad title (matches the
-    // user's weekly Excel report's category names)
-    const AD_CATEGORIES = [
-      { label: 'เฉพาะกิจ/คลิป', keys: ['เฉพาะกิจ'] },
-      { label: 'ส่วนกลาง/คลิป', keys: ['ส่วนกลาง'] },
-      { label: 'โปรโมชั่น/คลิป', keys: ['โปร'] },
-      { label: 'โพสต์รูป', keys: ['โพสต์'] },
-      { label: 'หัว+หาง/คลิป', keys: ['หัว', 'หาง'] },
-      { label: 'รถตัด/คลิป', keys: ['ตัด'] }
-    ];
-    function categorizeAd(adText) {
-      const raw = String(adText || '').trim();
-      if (!raw) return 'เจอเอง';
-      // collapse immediate repeated chars for matching only (ตััด -> ตัด)
-      const norm = raw.replace(/(.)\1+/g, '$1');
-      for (const cat of AD_CATEGORIES) {
-        if (cat.keys.some(k => norm.includes(k))) return cat.label;
-      }
-      return 'อื่นๆ/ไม่ระบุหมวด';
-    }
 
     function sanitizeSalesName(name) {
       if (!name) return '';
@@ -1570,7 +1528,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.09.05.1';
+    const APP_VERSION = '2026.09.05.2';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
@@ -2847,25 +2805,7 @@
         }
       }
 
-      // 5. Ad Category Summary (auto keyword-detected from ad title)
-      const adCatTbody = document.getElementById('repAdCategoryTableBody');
-      if (adCatTbody) {
-        const catMap = {};
-        filtered.forEach(l => {
-          const cat = categorizeAd(l.ad);
-          catMap[cat] = (catMap[cat] || 0) + 1;
-        });
-        const catEntries = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
-        adCatTbody.innerHTML = (catEntries.length ? catEntries : [['ยังไม่มีข้อมูล', 0]])
-          .map(([cat, count]) => `
-            <tr style="border-bottom: 1px solid var(--wash);">
-              <td style="padding: 6px; color: var(--text);">${escapeHtml(cat)}</td>
-              <td style="padding: 6px; text-align: right; font-weight: 700; color: var(--primary);">${count}</td>
-            </tr>
-          `).join('');
-      }
-
-      // 6. Team Summary (A/B/C rollup of the existing per-rep counts)
+      // 5. Team Summary (A/B/C rollup of the existing per-rep counts)
       const teamTbody = document.getElementById('repTeamTableBody');
       if (teamTbody) {
         const rows = SALES_TEAM_GROUPS.map(g => {
@@ -3039,17 +2979,6 @@ ${adSection}━━━━━━━━━━━━━━━━━━
         ? `เทียบเป้าหมาย ${goal} เคส: ${total >= goal ? '✅ ถึงเป้า' : `ขาดอีก ${goal - total} เคส`}\n`
         : '';
 
-      // Ad category breakdown
-      const catMap = {};
-      filtered.forEach(l => {
-        const cat = categorizeAd(l.ad);
-        catMap[cat] = (catMap[cat] || 0) + 1;
-      });
-      const catLines = Object.entries(catMap)
-        .sort((a, b) => b[1] - a[1])
-        .map(([cat, c]) => `  • ${cat}: ${c} เคส`)
-        .join('\n') || '  • (ไม่มีข้อมูล)';
-
       // Team breakdown
       const salesCountMap = {};
       SALES_TEAM.forEach(s => salesCountMap[s.name] = 0);
@@ -3062,15 +2991,12 @@ ${adSection}━━━━━━━━━━━━━━━━━━
       }).join('\n') + `\n  • ไม่ระบุเซลล์: ${pending} เคส`;
 
       const reportText =
-`📊 *รายงานสรุปรายสัปดาห์ (ช่องทาง/คลิป/ทีม) — ${periodLabel}*
+`📊 *รายงานสรุปรายสัปดาห์ (ช่องทาง/ทีม) — ${periodLabel}*
 ━━━━━━━━━━━━━━━━━━
 📞 ยอดเคสทั้งหมด: ${total} เคส (จ่ายงานแล้ว ${assigned} / รอเลือกเซลล์ ${pending})
 ${goalLine}
 📡 *สรุปตามช่องทาง:*
 ${channelLines}
-
-🎬 *สรุปคลิปที่ลูกค้าดู:*
-${catLines}
 
 🧑‍🤝‍🧑 *สรุปทีม:*
 ${teamLines}
@@ -3109,9 +3035,6 @@ ${teamLines}
         if (l.sales && l.sales.trim() !== '') channelStat[ch].withSales++;
       });
 
-      const catMap = {};
-      filtered.forEach(l => { const cat = categorizeAd(l.ad); catMap[cat] = (catMap[cat] || 0) + 1; });
-
       const salesCountMap = {};
       SALES_TEAM.forEach(s => salesCountMap[s.name] = 0);
       filtered.forEach(l => { if (l.sales && salesCountMap[l.sales] !== undefined) salesCountMap[l.sales]++; });
@@ -3120,10 +3043,6 @@ ${teamLines}
       let csv = '﻿' + 'หมวด,รายการ,ทั้งหมด,มีเซลล์,ไม่มีเซลล์\n';
       Object.entries(channelStat).filter(([, st]) => st.total > 0).forEach(([ch, st]) => {
         csv += `"ช่องทาง","${ch}",${st.total},${st.withSales},${st.total - st.withSales}\n`;
-      });
-      csv += '\n"หมวด","คลิป/แอด","จำนวน"\n';
-      Object.entries(catMap).sort((a, b) => b[1] - a[1]).forEach(([cat, c]) => {
-        csv += `"คลิป","${cat}",${c}\n`;
       });
       csv += '\n"หมวด","ทีม","จำนวน"\n';
       SALES_TEAM_GROUPS.forEach(g => {
