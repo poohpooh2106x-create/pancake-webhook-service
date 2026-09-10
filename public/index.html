@@ -460,7 +460,17 @@
     /* TABLE */
     .table-wrapper {
       overflow-x: auto;
+      cursor: grab;
     }
+    .table-wrapper.is-dragging {
+      cursor: grabbing;
+    }
+    /* keep normal cursors on the controls inside cells */
+    .table-wrapper input,
+    .table-wrapper textarea { cursor: text; }
+    .table-wrapper select,
+    .table-wrapper button,
+    .table-wrapper a { cursor: pointer; }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -1530,7 +1540,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.09.10.1';
+    const APP_VERSION = '2026.09.10.2';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
@@ -3676,7 +3686,54 @@ ${teamLines}
           document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
         }
       });
+
+      // Left-click + drag to pan the leads table sideways (in addition to the
+      // scrollbar / shift+wheel). Ignores drags that start on a form control so
+      // dropdowns, inputs and buttons keep working normally.
+      enableDragScroll(document.querySelector('.table-wrapper'));
     });
+
+    function enableDragScroll(el) {
+      if (!el) return;
+      let down = false, moved = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+      const onControl = (t) => t && t.closest && t.closest('input, select, textarea, button, a, [contenteditable]');
+
+      el.addEventListener('mousedown', (e) => {
+        if (e.button !== 0 || onControl(e.target)) return;
+        down = true;
+        moved = false;
+        startX = e.pageX;
+        startY = e.pageY;
+        startLeft = el.scrollLeft;
+        startTop = el.scrollTop;
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!down) return;
+        const dx = e.pageX - startX;
+        const dy = e.pageY - startY;
+        if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+        moved = true;
+        el.classList.add('is-dragging');
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+        el.scrollLeft = startLeft - dx;
+        el.scrollTop = startTop - dy;
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (!down) return;
+        down = false;
+        el.classList.remove('is-dragging');
+        document.body.style.userSelect = '';
+      });
+
+      // Swallow the click that fires at the end of a drag so it doesn't
+      // land on a cell control as an accidental tap.
+      el.addEventListener('click', (e) => {
+        if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; }
+      }, true);
+    }
   </script>
 </body>
 </html>
