@@ -53,7 +53,7 @@ async function runAllTests() {
     await pancakeHandler(req, res);
     assert.strictEqual(resData.statusCode, 200, 'GET should return 200');
     assert.strictEqual(resData.body.status, 'online', 'Status should be online');
-    assert.strictEqual(resData.body.appVersion, '2026.09.05.5', 'App version must match');
+    assert.strictEqual(resData.body.appVersion, '2026.09.10.1', 'App version must match');
     assert.ok(typeof resData.body.serverTimestamp === 'number', 'Server timestamp must be present');
     assert.ok(resData.headers['cache-control']?.includes('no-cache'), 'Cache-Control header must be set to no-cache');
     assert.ok(Array.isArray(resData.body.leads), 'Leads should be an array');
@@ -220,23 +220,25 @@ async function runAllTests() {
     const phone = '0963577542';
 
     let m = createMockReqRes({ method: 'POST', query: { action: 'sync_state' }, headers: admin,
-      body: { lead: { phone, teamLeadReport: 'หัวหน้าทีมสั่งให้ตามด่วน', closed: 'won' } } });
+      body: { lead: { phone, teamLeadReport: 'หัวหน้าทีมสั่งให้ตามด่วน', managerReport: 'ผู้จัดการอนุมัติส่วนลด 5%', closed: 'won' } } });
     await pancakeHandler(m.req, m.res);
     m = createMockReqRes({ method: 'GET', headers: admin });
     await pancakeHandler(m.req, m.res);
     let lead = m.resData.body.leads.find(l => l.phone === phone);
     assert.strictEqual(lead.teamLeadReport, 'หัวหน้าทีมสั่งให้ตามด่วน', 'admin sets teamLeadReport');
+    assert.strictEqual(lead.managerReport, 'ผู้จัดการอนุมัติส่วนลด 5%', 'admin sets managerReport');
     assert.strictEqual(lead.closed, 'won', 'admin sets closed status');
 
     m = createMockReqRes({ method: 'POST', query: { action: 'sync_state' }, headers: sales,
-      body: { lead: { phone, teamLeadReport: 'เซลล์แอบแก้', closed: 'lost' } } });
+      body: { lead: { phone, teamLeadReport: 'เซลล์แอบแก้', managerReport: 'เซลล์แอบแก้ผจก.', closed: 'lost' } } });
     await pancakeHandler(m.req, m.res);
     m = createMockReqRes({ method: 'GET', headers: admin });
     await pancakeHandler(m.req, m.res);
     lead = m.resData.body.leads.find(l => l.phone === phone);
     assert.strictEqual(lead.teamLeadReport, 'หัวหน้าทีมสั่งให้ตามด่วน', 'sales cannot change teamLeadReport');
+    assert.strictEqual(lead.managerReport, 'ผู้จัดการอนุมัติส่วนลด 5%', 'sales cannot change managerReport');
     assert.strictEqual(lead.closed, 'won', 'sales cannot change close status');
-    console.log('✅ Test 8b Passed: teamLeadReport & closed are admin-only');
+    console.log('✅ Test 8b Passed: teamLeadReport, managerReport & closed are admin-only');
   }
 
   // Test 9: Lead Deletion & Cloud Blacklist

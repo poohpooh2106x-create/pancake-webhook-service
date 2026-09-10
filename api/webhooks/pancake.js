@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.09.05.5';
+const APP_VERSION = '2026.09.10.1';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1150,6 +1150,7 @@ module.exports = async (req, res) => {
       if (target) {
         if (payload.lead.report !== undefined) target.report = payload.lead.report;
         if (payload.lead.teamLeadReport !== undefined) target.teamLeadReport = payload.lead.teamLeadReport;
+        if (payload.lead.managerReport !== undefined) target.managerReport = payload.lead.managerReport;
         if (payload.lead.closed !== undefined) target.closed = payload.lead.closed;
         if (payload.lead.sales !== undefined) target.sales = payload.lead.sales;
         if (payload.lead.truck !== undefined) target.truck = payload.lead.truck;

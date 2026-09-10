@@ -828,6 +828,7 @@
               <th>เซลล์ที่รับ</th>
               <th style="min-width: 220px;">📝 รีพอร์ตจากเซลล์ / บันทึกผล</th>
               <th style="min-width: 200px;">📋 รีพอร์ตหัวหน้าทีม</th>
+              <th style="min-width: 200px;">📊 รีพอร์ตผู้จัดการ</th>
               <th style="text-align: center;">ส่งต่อ / ปิดเคส</th>
             </tr>
           </thead>
@@ -1529,7 +1530,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.09.05.5';
+    const APP_VERSION = '2026.09.10.1';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
@@ -2236,6 +2237,7 @@
           const leadSales = lead.sales || '';
           const leadReport = escapeHtml(lead.report || '');
           const tlReport = escapeHtml(lead.teamLeadReport || '');
+          const mgrReport = escapeHtml(lead.managerReport || '');
           const leadClosed = lead.closed === 'won' || lead.closed === 'lost' ? lead.closed : '';
           const isAdmin = currentUserRole === 'admin';
 
@@ -2291,6 +2293,19 @@
                   >
                 ` : `<span style="font-size: 12px; color: var(--text-2);">${tlReport || '<span style=&quot;color:var(--faint)&quot;>-</span>'}</span>`}
               </td>
+              <td>
+                ${isAdmin ? `
+                  <input type="text"
+                         value="${mgrReport}"
+                         placeholder="📊 บันทึกจากผู้จัดการ..."
+                         oninput="updateLeadManagerReport(${realIdx}, this.value)"
+                         onchange="updateLeadManagerReport(${realIdx}, this.value)"
+                         style="background: rgba(183,121,31,0.07); border: 1px solid var(--border-light); border-radius: 6px; color: var(--text); padding: 6px 10px; font-size: 12px; width: 100%; min-width: 180px; outline: none; transition: border-color 0.2s;"
+                         onfocus="this.style.borderColor='var(--warning)';"
+                         onblur="this.style.borderColor='var(--border-light)';"
+                  >
+                ` : `<span style="font-size: 12px; color: var(--text-2);">${mgrReport || '<span style=&quot;color:var(--faint)&quot;>-</span>'}</span>`}
+              </td>
               <td style="text-align: center; white-space: nowrap;">
                 <button class="btn-line-send" onclick="sendToLine(${realIdx})" title="ส่งข้อมูลให้เซลล์ทาง LINE">
                   🟢 ส่ง LINE
@@ -2336,6 +2351,14 @@
       leads[idx].teamLeadReport = val;
       saveLeadState(leads[idx]);
       showSaveIndicator('บันทึกรีพอร์ตหัวหน้าทีมแล้ว 📋');
+    }
+
+    // รีพอร์ตผู้จัดการ — admin only
+    function updateLeadManagerReport(idx, val) {
+      if (currentUserRole !== 'admin' || !leads[idx]) return;
+      leads[idx].managerReport = val;
+      saveLeadState(leads[idx]);
+      showSaveIndicator('บันทึกรีพอร์ตผู้จัดการแล้ว 📊');
     }
 
     // ปิดเคส (✓ ปิดการขาย / ✗ ปิดเคสไม่ได้) — admin only; กดซ้ำเพื่อยกเลิก
@@ -2539,7 +2562,7 @@
       }
 
       let csv = '\uFEFF'; // BOM for Thai Excel
-      csv += 'วันที่,เวลา,ที่มา (Channel),ชื่อแอด/คลิป,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,เซลล์ที่รับผิดชอบ,รีพอร์ตจากเซลล์,รีพอร์ตหัวหน้าทีม,สถานะปิดเคส\n';
+      csv += 'วันที่,เวลา,ที่มา (Channel),ชื่อแอด/คลิป,ชื่อลูกค้า,เบอร์โทร,รถที่สนใจ,เซลล์ที่รับผิดชอบ,รีพอร์ตจากเซลล์,รีพอร์ตหัวหน้าทีม,รีพอร์ตผู้จัดการ,สถานะปิดเคส\n';
 
       const closedLabel = (c) => c === 'won' ? 'ปิดการขาย' : c === 'lost' ? 'ปิดเคส (ไม่ได้)' : '';
       leads.forEach(l => {
@@ -2554,6 +2577,7 @@
           `"${(l.sales || '').replace(/"/g, '""')}"`,
           `"${(l.report || '').replace(/"/g, '""')}"`,
           `"${(l.teamLeadReport || '').replace(/"/g, '""')}"`,
+          `"${(l.managerReport || '').replace(/"/g, '""')}"`,
           `"${closedLabel(l.closed)}"`
         ];
         csv += row.join(',') + '\n';
@@ -3479,8 +3503,8 @@ ${teamLines}
 
           const merged = sortLeadsByDate(applyPending(sortedServer));
 
-          const currentJson = JSON.stringify(leads.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, tlr: l.teamLeadReport, cl: l.closed, a: l.ad, src: l.source, d: l.date, tm: l.time })));
-          const serverJson = JSON.stringify(merged.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, tlr: l.teamLeadReport, cl: l.closed, a: l.ad, src: l.source, d: l.date, tm: l.time })));
+          const currentJson = JSON.stringify(leads.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, tlr: l.teamLeadReport, mgr: l.managerReport, cl: l.closed, a: l.ad, src: l.source, d: l.date, tm: l.time })));
+          const serverJson = JSON.stringify(merged.map(l => ({ id: l.id, p: l.phone, s: l.sales, t: l.truck, r: l.report, tlr: l.teamLeadReport, mgr: l.managerReport, cl: l.closed, a: l.ad, src: l.source, d: l.date, tm: l.time })));
 
           if (currentJson !== serverJson || leads.length !== merged.length) {
             leads = merged;
