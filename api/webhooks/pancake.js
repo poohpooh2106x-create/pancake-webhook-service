@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.09.10.2';
+const APP_VERSION = '2026.09.11.1';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1114,24 +1114,38 @@ module.exports = async (req, res) => {
 
     // RBAC: Role-Based Access Control
     if (authUser.role === 'sales') {
-      // Sales can only update the 'report' note for leads; they cannot delete leads or change truck list
+      // Sales can edit the fields the UI actually exposes to them — report,
+      // truck, sales-assignment and channel/source — but not the admin-only
+      // fields (teamLeadReport, managerReport, closed, name, date, ad) or the
+      // truck-TYPES / channel master lists themselves, and they cannot delete
+      // leads. Previously this only ever persisted `report`, so a sales user
+      // picking a truck or reassigning a lead saw it revert a few seconds
+      // later once the local optimistic-update window (pendingChanges, 25s)
+      // expired and the next poll brought back the server's unchanged value.
+      const SALES_EDITABLE_FIELDS = ['report', 'truck', 'sales', 'source'];
+      const applySalesEdit = (target, src) => {
+        if (!target || !src) return false;
+        let changed = false;
+        for (const f of SALES_EDITABLE_FIELDS) {
+          if (src[f] !== undefined) { target[f] = src[f]; changed = true; }
+        }
+        return changed;
+      };
       if (Array.isArray(payload?.leads)) {
         for (const updatedLead of payload.leads) {
           const target = memoryLeads.find(l => (updatedLead.id && l.id === updatedLead.id) || l.phone === updatedLead.phone);
-          if (target && updatedLead.report !== undefined) {
-            target.report = updatedLead.report;
-          }
+          applySalesEdit(target, updatedLead);
         }
       }
       let salesSheetTarget = null;
       if (payload?.lead) {
         const target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
-        if (target && payload.lead.report !== undefined) { target.report = payload.lead.report; salesSheetTarget = target; }
+        if (applySalesEdit(target, payload.lead)) salesSheetTarget = target;
       }
       await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
       if (salesSheetTarget) { syncToGoogleSheets(salesSheetTarget).catch(() => {}); }
-      recordAuditLog(req, clientIp, authUser.role, 200, 'sync_sales_report');
-      return res.status(200).json({ success: true, message: 'Sales report updated', role: 'sales', deletedIds: memoryDeletedIds });
+      recordAuditLog(req, clientIp, authUser.role, 200, 'sync_sales_edit');
+      return res.status(200).json({ success: true, message: 'Sales edit saved', role: 'sales', deletedIds: memoryDeletedIds });
     }
 
     // Admin. We deliberately IGNORE payload.leads (the client's full list) — the

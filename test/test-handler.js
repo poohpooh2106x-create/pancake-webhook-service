@@ -53,7 +53,7 @@ async function runAllTests() {
     await pancakeHandler(req, res);
     assert.strictEqual(resData.statusCode, 200, 'GET should return 200');
     assert.strictEqual(resData.body.status, 'online', 'Status should be online');
-    assert.strictEqual(resData.body.appVersion, '2026.09.10.2', 'App version must match');
+    assert.strictEqual(resData.body.appVersion, '2026.09.11.1', 'App version must match');
     assert.ok(typeof resData.body.serverTimestamp === 'number', 'Server timestamp must be present');
     assert.ok(resData.headers['cache-control']?.includes('no-cache'), 'Cache-Control header must be set to no-cache');
     assert.ok(Array.isArray(resData.body.leads), 'Leads should be an array');
@@ -239,6 +239,29 @@ async function runAllTests() {
     assert.strictEqual(lead.managerReport, 'ผู้จัดการอนุมัติส่วนลด 5%', 'sales cannot change managerReport');
     assert.strictEqual(lead.closed, 'won', 'sales cannot change close status');
     console.log('✅ Test 8b Passed: teamLeadReport, managerReport & closed are admin-only');
+  }
+
+  // Test 8c: Sales CAN edit truck / sales-assignment / source — these are
+  // exposed to sales in the UI, so the server must persist them (previously
+  // only `report` was saved, so a sales user's truck/sales pick reverted a
+  // few seconds later once the client's optimistic overlay expired).
+  {
+    const sales = { 'x-pancake-secret': 'kp_sales_4a7c8e2b9d1f3068e5b7a2c4d9f103b872e4a9c1d5f8b0e3a6c2d4f8b9e1a3c5' };
+    const admin = { 'x-pancake-secret': 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e' };
+    const phone = '0963577542';
+
+    let m = createMockReqRes({ method: 'POST', query: { action: 'sync_state' }, headers: sales,
+      body: { lead: { phone, truck: 'รถบรรทุก 6 ล้อ', sales: 'เกด', source: 'TikTok' } } });
+    await pancakeHandler(m.req, m.res);
+    assert.strictEqual(m.resData.statusCode, 200, 'sales sync_state should succeed');
+
+    m = createMockReqRes({ method: 'GET', headers: admin });
+    await pancakeHandler(m.req, m.res);
+    const lead = m.resData.body.leads.find(l => l.phone === phone);
+    assert.strictEqual(lead.truck, 'รถบรรทุก 6 ล้อ', 'sales-picked truck must persist');
+    assert.strictEqual(lead.sales, 'เกด', 'sales-assignment made by a sales user must persist');
+    assert.strictEqual(lead.source, 'TikTok', 'sales-picked channel/source must persist');
+    console.log('✅ Test 8c Passed: sales edits to truck/sales/source persist (not just report)');
   }
 
   // Test 9: Lead Deletion & Cloud Blacklist
