@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.09.14.4';
+const APP_VERSION = '2026.09.14.5';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -57,23 +57,34 @@ function upstashCommand(command) {
   });
 }
 
-// Deletions are ALSO recorded in a dedicated Redis SET (SADD), on top of the
-// deletedIds array inside the main state blob. SADD is atomic and additive —
-// immune to the "read whole blob, mutate in memory, write whole blob back"
-// race every other write in this file uses. Two concurrent requests (e.g. an
-// admin deleting lead A while a report keystroke on lead B is mid-flight)
-// each read the blob at roughly the same time; whichever saves LAST wins and
-// its in-memory deletedIds — possibly still missing a deletion the other
-// request just made — overwrites the blob's copy, permanently un-deleting a
-// lead that was just removed. This set can't be regressed that way, so
-// fetchCloudData() always recovers the true deletion within one poll cycle
-// even if the blob's copy got clobbered.
+// Deletions are ALSO recorded in a dedicated Redis SORTED SET (ZADD, score =
+// deletion timestamp), on top of the deletedIds array inside the main state
+// blob. ZADD is atomic and additive — immune to the "read whole blob, mutate
+// in memory, write whole blob back" race every other write in this file
+// uses. Two concurrent requests (e.g. an admin deleting lead A while a
+// report keystroke on lead B is mid-flight) each read the blob at roughly
+// the same time; whichever saves LAST wins and its in-memory deletedIds —
+// possibly still missing a deletion the other request just made —
+// overwrites the blob's copy, permanently un-deleting a lead that was just
+// removed. This set can't be regressed that way, so fetchCloudData() always
+// recovers the true deletion within one poll cycle even if the blob's copy
+// got clobbered.
+//
+// The timestamp also backs a grace period in unblacklistKeys(): a PanCake
+// webhook re-arriving for a real, still-active customer's phone moments
+// after an admin explicitly deleted them was un-deleting them right back
+// (that path is intentional for a genuinely RETURNING customer, but not for
+// routine webhook noise on an already-open conversation seconds after a
+// deliberate delete) — see DELETE_GRACE_MS below.
 async function addToDeletedSet(ids) {
   if (!USE_UPSTASH) return;
   const clean = (ids || []).filter(Boolean).map(String);
   if (!clean.length) return;
+  const now = Date.now();
   try {
-    await upstashCommand(['SADD', DELETED_IDS_SET_KEY, ...clean]);
+    const args = [];
+    for (const id of clean) { args.push(String(now), id); }
+    await upstashCommand(['ZADD', DELETED_IDS_SET_KEY, ...args]);
   } catch (e) {
     console.error('addToDeletedSet error:', e.message);
   }
@@ -82,11 +93,24 @@ async function addToDeletedSet(ids) {
 async function loadDeletedSet() {
   if (!USE_UPSTASH) return [];
   try {
-    const members = await upstashCommand(['SMEMBERS', DELETED_IDS_SET_KEY]);
+    const members = await upstashCommand(['ZRANGE', DELETED_IDS_SET_KEY, '0', '-1']);
     return Array.isArray(members) ? members : [];
   } catch (e) {
     console.error('loadDeletedSet error:', e.message);
     return [];
+  }
+}
+
+// When this phone/id was deleted, in ms since epoch — or null if not (or not
+// found because Upstash isn't configured).
+async function getDeletedAt(key) {
+  if (!USE_UPSTASH || !key) return null;
+  try {
+    const score = await upstashCommand(['ZSCORE', DELETED_IDS_SET_KEY, String(key)]);
+    return score === null || score === undefined ? null : Number(score);
+  } catch (e) {
+    console.error('getDeletedAt error:', e.message);
+    return null;
   }
 }
 
@@ -161,7 +185,15 @@ async function storageSave(dataObj) {
 // SREMs from the atomic deleted-ids SET (see addToDeletedSet) — without this,
 // fetchCloudData's SMEMBERS union would keep re-blacklisting this phone from
 // the set on every next read, undoing the un-delete moments later.
-async function unblacklistKeys(lead) {
+// DELETE_GRACE_MS: a webhook re-arrival for an already-blacklisted phone
+// within this long of the explicit delete is treated as routine noise on a
+// still-open PanCake conversation (delivery receipts, retries, an agent's
+// own reply echoed back, etc.), not a customer genuinely returning — so it
+// does NOT un-delete. An explicit admin re-add (manual "+เพิ่มเคสเอง", or any
+// future un-delete action) always bypasses this via respectGracePeriod=false.
+const DELETE_GRACE_MS = 5 * 60 * 1000; // 5 minutes
+
+async function unblacklistKeys(lead, { respectGracePeriod = false } = {}) {
   if (!lead) return;
   const keys = new Set();
   if (lead.id) keys.add(String(lead.id).trim());
@@ -174,10 +206,23 @@ async function unblacklistKeys(lead) {
     if (lead.name) keys.add(`${String(lead.name).trim()}_${raw}`);
   }
   if (!keys.size) return;
-  memoryDeletedIds = memoryDeletedIds.filter(d => !keys.has(String(d).trim()));
+
+  let allowedKeys = keys;
+  if (respectGracePeriod && USE_UPSTASH) {
+    const now = Date.now();
+    const checked = await Promise.all([...keys].map(async (k) => {
+      const deletedAt = await getDeletedAt(k);
+      const withinGrace = deletedAt !== null && (now - deletedAt) < DELETE_GRACE_MS;
+      return withinGrace ? null : k;
+    }));
+    allowedKeys = new Set(checked.filter(Boolean));
+    if (!allowedKeys.size) return; // every key is still inside its grace period — stay deleted
+  }
+
+  memoryDeletedIds = memoryDeletedIds.filter(d => !allowedKeys.has(String(d).trim()));
   if (USE_UPSTASH) {
-    try { await upstashCommand(['SREM', DELETED_IDS_SET_KEY, ...keys]); }
-    catch (e) { console.error('unblacklistKeys SREM error:', e.message); }
+    try { await upstashCommand(['ZREM', DELETED_IDS_SET_KEY, ...allowedKeys]); }
+    catch (e) { console.error('unblacklistKeys ZREM error:', e.message); }
   }
 }
 
@@ -1219,7 +1264,8 @@ module.exports = async (req, res) => {
       // ordering guarantee), and this code used to unconditionally revive
       // the lead it was trying to patch.
       if (!target && payload.lead.phone && !payload.lead.id) {
-        await unblacklistKeys(payload.lead);
+        // Explicit admin re-add ("+เพิ่มเคสเอง") — always allowed, no grace period.
+        await unblacklistKeys(payload.lead, { respectGracePeriod: false });
         target = { id: 'lead_' + Date.now(), sales: '', report: '', ...payload.lead };
         memoryLeads.unshift(target);
       }
@@ -1438,8 +1484,12 @@ module.exports = async (req, res) => {
       };
 
       // Customer messaged in again → they are a live lead, drop any stale
-      // blacklist entry for this phone so the sync filters don't nuke them.
-      await unblacklistKeys(leadObj);
+      // blacklist entry for this phone so the sync filters don't nuke them —
+      // UNLESS an admin deleted them within the last few minutes (see
+      // DELETE_GRACE_MS): a webhook re-arriving that fast on an already-open
+      // PanCake conversation is routine noise (delivery receipt, retry, the
+      // agent's own reply echoed back), not proof the customer came back.
+      await unblacklistKeys(leadObj, { respectGracePeriod: true });
 
       // Check if lead exists in memoryLeads (e.g. old customer giving number again today)
       const existingIdx = memoryLeads.findIndex(l => (leadObj.id && l.id === leadObj.id) || l.phone === leadObj.phone);
