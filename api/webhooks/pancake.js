@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.09.14.5';
+const APP_VERSION = '2026.09.14.6';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1438,11 +1438,35 @@ module.exports = async (req, res) => {
     if (itemsToProcess.length === 0) {
       console.log('ℹ️ No customer/phone items detected in payload');
       await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs);
-      return res.status(200).json({
+      const respBody = {
         success: true,
         message: 'Webhook received (no customer items matched)',
         receivedPayload: payload
-      });
+      };
+      // TEMP diagnostics (2026-09-14, remove once "ลบเคสแล้วเด้งกลับ" is
+      // confirmed fixed): this branch has no side effects on real leads, so
+      // it's a safe place to surface storage health without needing a login.
+      if (req.query?.diag === 'pooh1') {
+        respBody.diag = {
+          storage: USE_UPSTASH ? 'upstash' : 'legacy',
+          lastCloudReadOk,
+          currentLeadCount: memoryLeads.length,
+          currentDeletedCount: memoryDeletedIds.length
+        };
+        if (USE_UPSTASH) {
+          try {
+            const members = await upstashCommand(['ZRANGE', DELETED_IDS_SET_KEY, '0', '-1']);
+            respBody.diag.deletedSetCount = Array.isArray(members) ? members.length : null;
+            respBody.diag.deletedSetOk = true;
+          } catch (e) {
+            respBody.diag.deletedSetOk = false;
+            respBody.diag.deletedSetError = e.message;
+          }
+        } else {
+          respBody.diag.deletedSetOk = 'n/a (legacy storage, no Upstash)';
+        }
+      }
+      return res.status(200).json(respBody);
     }
 
     // cloud state already refreshed once at the top of the handler
