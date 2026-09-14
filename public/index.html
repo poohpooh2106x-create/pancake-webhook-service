@@ -1540,7 +1540,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.09.14.3';
+    const APP_VERSION = '2026.09.14.4';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
@@ -1868,14 +1868,17 @@
             }
           }
 
-          // The server (Upstash) is the single source of truth. Adopt its list
-          // verbatim — it has already filtered its own deletions, so DON'T
-          // re-filter here (a stale local blacklist entry must not hide a lead
-          // the server considers live). Push up any local-only lead once.
+          // The server (Upstash) is the single source of truth for a settled
+          // read — but a GET that was already in-flight when the user clicked
+          // delete a moment ago reflects the PRE-delete state, since the
+          // server hadn't processed the delete yet when it handled that GET.
+          // isRecentlyDeleted() guards that narrow race; anything older than
+          // its TTL is trusted verbatim as before (a stale local blacklist
+          // entry must not hide a lead the server considers live).
           if (Array.isArray(data.leads) && data.leadsReadOk !== false
               && !(data.leads.length === 0 && Array.isArray(leads) && leads.length > 3)) {
             const serverLeads = data.leads
-              .filter(l => l && l.phone)
+              .filter(l => l && l.phone && !isRecentlyDeleted(l))
               .map(l => ({
                 ...l,
                 source: sanitizeChannelName(l.source),
@@ -2111,6 +2114,44 @@
     // before the server has confirmed them (that was the "ใส่ข้อมูลแล้วหาย" bug).
     const pendingChanges = new Map(); // key (phone||id) -> { lead, ts }
     const PENDING_TTL_MS = 25000;
+
+    // A lead deleted locally in the last few seconds. refreshLeads() blindly
+    // adopted the server's `leads` list, and a poll GET that was already
+    // in-flight when the user clicked delete (very common — polling runs
+    // every 4s) lands moments AFTER the delete and still reflects the
+    // pre-delete server state, since that GET was handled before the DELETE
+    // request landed. Nothing filtered the adopted list against the local
+    // blacklist, so the just-deleted lead reappeared immediately — this is
+    // the actual "ลบเคสแล้วเด้งกลับ" cause, independent of every server-side
+    // fix, since it's a stale READ racing the delete, not two writes racing.
+    const recentlyDeleted = new Map(); // key -> ts
+    const DELETE_GUARD_TTL_MS = 25000;
+
+    function markRecentlyDeleted(lead) {
+      if (!lead) return;
+      const now = Date.now();
+      if (lead.id) recentlyDeleted.set(String(lead.id).trim(), now);
+      if (lead.phone) {
+        recentlyDeleted.set(String(lead.phone).trim(), now);
+        const c = extractThaiPhone(lead.phone);
+        if (c) recentlyDeleted.set(c, now);
+      }
+    }
+
+    function isRecentlyDeleted(lead) {
+      if (!lead) return false;
+      const now = Date.now();
+      const keys = [lead.id, lead.phone, lead.phone ? extractThaiPhone(lead.phone) : null];
+      for (const k of keys) {
+        if (!k) continue;
+        const ts = recentlyDeleted.get(String(k).trim());
+        if (ts !== undefined) {
+          if (now - ts > DELETE_GUARD_TTL_MS) { recentlyDeleted.delete(String(k).trim()); continue; }
+          return true;
+        }
+      }
+      return false;
+    }
 
     function markPending(lead) {
       if (!lead) return;
@@ -2468,6 +2509,12 @@
           // 1b. Forget any unconfirmed pending edit for this lead so the next
           // poll's applyPending() doesn't resurrect it (see clearPending()).
           clearPending(targetLead);
+
+          // 1c. Guard against a poll GET that was already in-flight when we
+          // clicked delete — its response reflects the server's pre-delete
+          // state and would otherwise get adopted verbatim a moment later
+          // (see isRecentlyDeleted() in refreshLeads()).
+          markRecentlyDeleted(targetLead);
 
           // 2. Remove from leads array by reference/ID/phone
           leads = leads.filter(l => l !== targetLead && !isLeadBlacklisted(l, updatedBlacklist));
@@ -3503,7 +3550,7 @@ ${teamLines}
             && !(data.leads.length === 0 && Array.isArray(leads) && leads.length > 3)) {
           const sortedServer = sortLeadsByDate(
             data.leads
-              .filter(sl => sl && sl.phone)
+              .filter(sl => sl && sl.phone && !isRecentlyDeleted(sl))
               .map(sl => ({
                 ...sl,
                 source: sanitizeChannelName(sl.source),
