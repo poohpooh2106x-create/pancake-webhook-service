@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.09.11.1';
+const APP_VERSION = '2026.09.14.1';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER

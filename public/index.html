@@ -1540,7 +1540,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.09.11.1';
+    const APP_VERSION = '2026.09.14.1';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
@@ -2118,6 +2118,16 @@
       if (key) pendingChanges.set(key, { lead: { ...lead }, ts: Date.now() });
     }
 
+    // Deleting a lead must forget any pending (unconfirmed) edit for it too —
+    // otherwise applyPending() kept re-injecting the just-deleted lead back
+    // into the list on every poll until the 25s TTL happened to expire
+    // ("ลบเคสแล้วมันเด้งกลับ").
+    function clearPending(lead) {
+      if (!lead) return;
+      if (lead.phone) pendingChanges.delete(lead.phone);
+      if (lead.id) pendingChanges.delete(lead.id);
+    }
+
     // Overlay still-pending local changes on top of the server list.
     function applyPending(serverLeads) {
       if (!pendingChanges.size) return serverLeads;
@@ -2125,6 +2135,9 @@
       const byKey = new Map(serverLeads.map(l => [l.phone || l.id, l]));
       for (const [key, ent] of [...pendingChanges]) {
         if (now - ent.ts > PENDING_TTL_MS) { pendingChanges.delete(key); continue; }
+        // Never resurrect a lead the user just deleted — the server correctly
+        // omitting it is authoritative, not a sync lag.
+        if (isLeadBlacklisted(ent.lead)) { pendingChanges.delete(key); continue; }
         const srv = byKey.get(key);
         if (!srv) {
           serverLeads = [ent.lead, ...serverLeads];            // add not-yet-synced lead
@@ -2451,6 +2464,10 @@
           const updatedBlacklist = addToBlacklist(targetLead);
           console.log('🗑️ [DeleteLead] Deleting target lead:', targetLead.name, targetLead.phone, targetLead.id);
           console.log('💾 [Blacklist] Current blacklist entries:', updatedBlacklist);
+
+          // 1b. Forget any unconfirmed pending edit for this lead so the next
+          // poll's applyPending() doesn't resurrect it (see clearPending()).
+          clearPending(targetLead);
 
           // 2. Remove from leads array by reference/ID/phone
           leads = leads.filter(l => l !== targetLead && !isLeadBlacklisted(l, updatedBlacklist));
