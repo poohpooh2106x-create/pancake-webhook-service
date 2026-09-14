@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.09.14.1';
+const APP_VERSION = '2026.09.14.2';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1154,11 +1154,20 @@ module.exports = async (req, res) => {
     // `payload.lead` change (edit / manual add) is applied.
     let sheetTarget = null;
     if (payload?.lead) {
-      // An explicit single-lead sync (edit or manual re-add) un-deletes it.
-      unblacklistKeys(payload.lead);
       let target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
-      if (!target && payload.lead.phone) {
-        target = { id: payload.lead.id || 'lead_' + Date.now(), sales: '', report: '', ...payload.lead };
+
+      // Not found: either a genuine manual re-add (saveManualLead() never
+      // sets an id) or a STALE edit request for a lead someone just deleted
+      // (updateLead* always sends the real lead.id, which the delete already
+      // removed). Only the former should create+un-delete — recreating on
+      // the latter was the "ลบเคสแล้วเด้งกลับ" bug: a report keystroke or
+      // truck/sales change fired moments before the delete could easily
+      // arrive at the server AFTER it (separate concurrent requests, no
+      // ordering guarantee), and this code used to unconditionally revive
+      // the lead it was trying to patch.
+      if (!target && payload.lead.phone && !payload.lead.id) {
+        unblacklistKeys(payload.lead);
+        target = { id: 'lead_' + Date.now(), sales: '', report: '', ...payload.lead };
         memoryLeads.unshift(target);
       }
       if (target) {

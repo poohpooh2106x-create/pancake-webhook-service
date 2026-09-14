@@ -53,7 +53,7 @@ async function runAllTests() {
     await pancakeHandler(req, res);
     assert.strictEqual(resData.statusCode, 200, 'GET should return 200');
     assert.strictEqual(resData.body.status, 'online', 'Status should be online');
-    assert.strictEqual(resData.body.appVersion, '2026.09.14.1', 'App version must match');
+    assert.strictEqual(resData.body.appVersion, '2026.09.14.2', 'App version must match');
     assert.ok(typeof resData.body.serverTimestamp === 'number', 'Server timestamp must be present');
     assert.ok(resData.headers['cache-control']?.includes('no-cache'), 'Cache-Control header must be set to no-cache');
     assert.ok(Array.isArray(resData.body.leads), 'Leads should be an array');
@@ -305,6 +305,29 @@ async function runAllTests() {
     const found = getResData.body.leads?.find(l => l.phone === '0812345678');
     assert.strictEqual(found, undefined, 'Blacklisted lead must be completely rejected by Cloud Server');
     console.log('✅ Test 10 Passed: Cloud Blacklist blocks resurrection of deleted leads');
+  }
+
+  // Test 10b: A stale `payload.lead` edit that arrives AFTER a delete (e.g. a
+  // report keystroke or truck/sales change fired moments before someone
+  // deleted the same lead, and the two requests raced out of order) must
+  // NOT resurrect it. This is the actual "ลบเคสแล้วเด้งกลับ" root cause:
+  // sync_state used to always recreate + un-blacklist any payload.lead it
+  // couldn't find, even when that payload carried the real (now-deleted)
+  // lead id rather than being a genuine no-id manual add.
+  {
+    const admin = { 'x-pancake-secret': 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e' };
+    const staleEdit = { id: 'test_lead_std_01', phone: '0812345678', report: 'แก้ไขที่มาช้าหลังถูกลบ' };
+
+    let m = createMockReqRes({ method: 'POST', query: { action: 'sync_state' }, headers: admin, body: { lead: staleEdit } });
+    await pancakeHandler(m.req, m.res);
+    assert.strictEqual(m.resData.statusCode, 200);
+
+    m = createMockReqRes({ method: 'GET', headers: admin });
+    await pancakeHandler(m.req, m.res);
+    const found = m.resData.body.leads?.find(l => l.phone === '0812345678');
+    assert.strictEqual(found, undefined, 'a stale field edit for a deleted lead must not recreate it');
+    assert.ok(m.resData.body.deletedIds?.includes('0812345678'), 'the phone must stay blacklisted, not silently un-deleted');
+    console.log('✅ Test 10b Passed: stale post-delete edit does not resurrect the lead');
   }
 
   // Test 11: Sync Custom Channel Sources
