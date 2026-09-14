@@ -1540,7 +1540,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.09.14.7';
+    const APP_VERSION = '2026.09.14.8';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
@@ -2524,30 +2524,82 @@
           saveState(false);
           updateAll();
 
-          // 4. Sync deletion and complete blacklist to Cloud Server immediately
+          // 4. Sync deletion and complete blacklist to Cloud Server immediately.
+          // The success toast used to fire unconditionally here regardless of
+          // whether this actually reached the server — so a failed delete
+          // (network error, 403, 500, whatever) looked identical to a real
+          // one, and the lead reappeared the moment any poll re-adopted the
+          // server's untouched list. Now: on any failure, say so plainly and
+          // put the lead back so the screen matches reality instead of lying.
+          let serverConfirmed = false;
+          let failureReason = '';
           try {
             console.log('🚀 [DeleteLead] Sending delete request to Cloud Server...');
             const res = await fetchWithAuth('/api/webhooks/pancake?action=delete_lead', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                phone: targetLead.phone, 
-                id: targetLead.id, 
-                leads, 
-                deletedIds: updatedBlacklist 
+              body: JSON.stringify({
+                phone: targetLead.phone,
+                id: targetLead.id,
+                leads,
+                deletedIds: updatedBlacklist
               }),
               keepalive: true
             });
-            if (res && res.ok) {
+            if (!res) {
+              // fetchWithAuth already surfaced a 401/429 dialog of its own.
+              failureReason = 'เซสชันหมดอายุหรือถูกจำกัดคำขอ (ดูป๊อปอัปที่เพิ่งขึ้น)';
+            } else if (!res.ok) {
+              let bodyText = '';
+              try { bodyText = (await res.json())?.message || ''; } catch(e) {}
+              failureReason = `เซิร์ฟเวอร์ตอบกลับ HTTP ${res.status}${bodyText ? ' — ' + bodyText : ''}`;
+            } else {
               const resJson = await res.json();
               console.log('✅ [DeleteLead Cloud Success]:', resJson);
+              serverConfirmed = true;
             }
           } catch(e) {
             console.error('❌ [DeleteLead Cloud Error]:', e);
+            failureReason = `เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ (${e.message || e})`;
           }
 
-          const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
-          Toast.fire({ icon: 'success', title: `ลบเคส "${targetLead.name || ''}" เรียบร้อยแล้ว` });
+          if (serverConfirmed) {
+            const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+            Toast.fire({ icon: 'success', title: `ลบเคส "${targetLead.name || ''}" เรียบร้อยแล้ว` });
+          } else {
+            // Roll back the optimistic local removal — the server never
+            // confirmed the delete, so it WILL come back on the next poll;
+            // better to show that honestly right now than have it look
+            // "deleted" for a few seconds and then mysteriously reappear.
+            clearPending(targetLead);
+            recentlyDeleted.delete(String(targetLead.phone || '').trim());
+            recentlyDeleted.delete(String(targetLead.id || '').trim());
+            // Also undo the local blacklist add from step 1 — otherwise the
+            // lead we're putting back would just get filtered right back out.
+            try {
+              let bl = getLocalBlacklist();
+              const remove = new Set();
+              if (targetLead.id) remove.add(String(targetLead.id).trim());
+              if (targetLead.phone) {
+                const raw = String(targetLead.phone).trim();
+                remove.add(raw);
+                remove.add(raw.replace(/[\s\-\.\/]/g, ''));
+                const c = extractThaiPhone(raw);
+                if (c) remove.add(c);
+                if (targetLead.name) remove.add(`${String(targetLead.name).trim()}_${raw}`);
+              }
+              bl = bl.filter(d => !remove.has(String(d).trim()));
+              deletedBlacklistSet.clear();
+              bl.forEach(d => deletedBlacklistSet.add(d));
+              localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(bl.slice(-500)));
+            } catch(e) {}
+            if (!leads.some(l => l === targetLead || l.id === targetLead.id)) {
+              leads.unshift(targetLead);
+              leads = sortLeadsByDate(leads);
+            }
+            updateAll();
+            Swal.fire('ลบเคสไม่สำเร็จ', `เคสนี้ยังอยู่ในระบบตามเดิมครับ — สาเหตุ: ${failureReason}`, 'error');
+          }
         }
       });
     }
