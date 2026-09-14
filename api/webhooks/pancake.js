@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.09.14.6';
+const APP_VERSION = '2026.09.14.7';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1144,8 +1144,21 @@ module.exports = async (req, res) => {
     }
     const delPhone = payload?.phone;
     const delId = payload?.id;
-    const newlyBlacklisted = [];
-    const addKey = (k) => { if (k && !memoryDeletedIds.includes(k)) { memoryDeletedIds.push(k); newlyBlacklisted.push(k); } };
+    // ALL keys for this delete, whether or not memoryDeletedIds already had
+    // them — not just the newly-added ones. A lead re-deleted after an
+    // earlier resurrection (or blacklisted before this atomic-set feature
+    // existed) was already "in" memoryDeletedIds, so it never got pushed
+    // into the atomic set at all and stayed permanently exposed to the
+    // original blob-clobbering race no matter how many more times it was
+    // deleted. ZADD is idempotent, so re-sending an already-present key is
+    // harmless (just refreshes its score) — this self-heals every such lead
+    // the next time it's deleted.
+    const keysThisDelete = [];
+    const addKey = (k) => {
+      if (!k) return;
+      keysThisDelete.push(k);
+      if (!memoryDeletedIds.includes(k)) memoryDeletedIds.push(k);
+    };
 
     if (delPhone) {
       addKey(delPhone);
@@ -1156,11 +1169,11 @@ module.exports = async (req, res) => {
       for (const d of payload.deletedIds) addKey(d);
     }
 
-    // Write to the atomic SADD set FIRST and await it — this is the copy that
-    // can't be lost to a losing concurrent full-blob write (see
+    // Write to the atomic ZADD set FIRST and await it — this is the copy
+    // that can't be lost to a losing concurrent full-blob write (see
     // addToDeletedSet). The blob write below still happens too, as the
     // legacy-mode fallback and for a fast first read.
-    await addToDeletedSet(newlyBlacklisted);
+    await addToDeletedSet(keysThisDelete);
 
     // Ignore payload.leads (client's full list); just drop the blacklisted ones
     // from our authoritative set.
