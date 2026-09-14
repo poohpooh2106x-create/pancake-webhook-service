@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.09.14.2';
+const APP_VERSION = '2026.09.14.3';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -19,6 +19,7 @@ const CLOUD_API_URL = `https://api.restful-api.dev/objects/${CLOUD_OBJECT_ID}`;
 const UPSTASH_URL = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/+$/, '');
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const STORAGE_KEY = process.env.PANCAKE_STORAGE_KEY || 'pancake_crm_state_v1';
+const DELETED_IDS_SET_KEY = STORAGE_KEY + ':deleted_ids';
 const USE_UPSTASH = !!(UPSTASH_URL && UPSTASH_TOKEN);
 
 function upstashCommand(command) {
@@ -54,6 +55,39 @@ function upstashCommand(command) {
     req.write(body, 'utf8');
     req.end();
   });
+}
+
+// Deletions are ALSO recorded in a dedicated Redis SET (SADD), on top of the
+// deletedIds array inside the main state blob. SADD is atomic and additive —
+// immune to the "read whole blob, mutate in memory, write whole blob back"
+// race every other write in this file uses. Two concurrent requests (e.g. an
+// admin deleting lead A while a report keystroke on lead B is mid-flight)
+// each read the blob at roughly the same time; whichever saves LAST wins and
+// its in-memory deletedIds — possibly still missing a deletion the other
+// request just made — overwrites the blob's copy, permanently un-deleting a
+// lead that was just removed. This set can't be regressed that way, so
+// fetchCloudData() always recovers the true deletion within one poll cycle
+// even if the blob's copy got clobbered.
+async function addToDeletedSet(ids) {
+  if (!USE_UPSTASH) return;
+  const clean = (ids || []).filter(Boolean).map(String);
+  if (!clean.length) return;
+  try {
+    await upstashCommand(['SADD', DELETED_IDS_SET_KEY, ...clean]);
+  } catch (e) {
+    console.error('addToDeletedSet error:', e.message);
+  }
+}
+
+async function loadDeletedSet() {
+  if (!USE_UPSTASH) return [];
+  try {
+    const members = await upstashCommand(['SMEMBERS', DELETED_IDS_SET_KEY]);
+    return Array.isArray(members) ? members : [];
+  } catch (e) {
+    console.error('loadDeletedSet error:', e.message);
+    return [];
+  }
 }
 
 // Read the shared state object ({ leads, truckTypes, channels, ... }) or null.
@@ -123,8 +157,11 @@ async function storageSave(dataObj) {
 
 // A previously-deleted phone/id being re-added (customer returned via webhook,
 // or an explicit re-add) must come OFF the blacklist — otherwise the permanent
-// by-phone blacklist silently nukes a legitimate new lead on every sync.
-function unblacklistKeys(lead) {
+// by-phone blacklist silently nukes a legitimate new lead on every sync. Also
+// SREMs from the atomic deleted-ids SET (see addToDeletedSet) — without this,
+// fetchCloudData's SMEMBERS union would keep re-blacklisting this phone from
+// the set on every next read, undoing the un-delete moments later.
+async function unblacklistKeys(lead) {
   if (!lead) return;
   const keys = new Set();
   if (lead.id) keys.add(String(lead.id).trim());
@@ -136,7 +173,12 @@ function unblacklistKeys(lead) {
     if (c) keys.add(c);
     if (lead.name) keys.add(`${String(lead.name).trim()}_${raw}`);
   }
-  if (keys.size) memoryDeletedIds = memoryDeletedIds.filter(d => !keys.has(String(d).trim()));
+  if (!keys.size) return;
+  memoryDeletedIds = memoryDeletedIds.filter(d => !keys.has(String(d).trim()));
+  if (USE_UPSTASH) {
+    try { await upstashCommand(['SREM', DELETED_IDS_SET_KEY, ...keys]); }
+    catch (e) { console.error('unblacklistKeys SREM error:', e.message); }
+  }
 }
 
 // DEFAULT_MASTER_LEADS removed — it resurrected deleted leads whenever a
@@ -583,6 +625,12 @@ async function fetchCloudData() {
     for (const d of data.deletedIds) {
       if (d && !memoryDeletedIds.includes(d)) memoryDeletedIds.push(d);
     }
+  }
+  // Authoritative source: the atomic SADD set survives even if the blob's own
+  // deletedIds copy got regressed by a losing concurrent write (see
+  // addToDeletedSet). Union it in too so a deletion always recovers here.
+  for (const d of await loadDeletedSet()) {
+    if (d && !memoryDeletedIds.includes(d)) memoryDeletedIds.push(d);
   }
 
   // Storage is authoritative. If it holds a leads array, REPLACE the in-memory
@@ -1051,18 +1099,23 @@ module.exports = async (req, res) => {
     }
     const delPhone = payload?.phone;
     const delId = payload?.id;
+    const newlyBlacklisted = [];
+    const addKey = (k) => { if (k && !memoryDeletedIds.includes(k)) { memoryDeletedIds.push(k); newlyBlacklisted.push(k); } };
 
     if (delPhone) {
-      if (!memoryDeletedIds.includes(delPhone)) memoryDeletedIds.push(delPhone);
-      const cleanP = cleanThaiPhoneNumber(delPhone);
-      if (cleanP && !memoryDeletedIds.includes(cleanP)) memoryDeletedIds.push(cleanP);
+      addKey(delPhone);
+      addKey(cleanThaiPhoneNumber(delPhone));
     }
-    if (delId && !memoryDeletedIds.includes(delId)) memoryDeletedIds.push(delId);
+    addKey(delId);
     if (Array.isArray(payload?.deletedIds)) {
-      for (const d of payload.deletedIds) {
-        if (d && !memoryDeletedIds.includes(d)) memoryDeletedIds.push(d);
-      }
+      for (const d of payload.deletedIds) addKey(d);
     }
+
+    // Write to the atomic SADD set FIRST and await it — this is the copy that
+    // can't be lost to a losing concurrent full-blob write (see
+    // addToDeletedSet). The blob write below still happens too, as the
+    // legacy-mode fallback and for a fast first read.
+    await addToDeletedSet(newlyBlacklisted);
 
     // Ignore payload.leads (client's full list); just drop the blacklisted ones
     // from our authoritative set.
@@ -1166,7 +1219,7 @@ module.exports = async (req, res) => {
       // ordering guarantee), and this code used to unconditionally revive
       // the lead it was trying to patch.
       if (!target && payload.lead.phone && !payload.lead.id) {
-        unblacklistKeys(payload.lead);
+        await unblacklistKeys(payload.lead);
         target = { id: 'lead_' + Date.now(), sales: '', report: '', ...payload.lead };
         memoryLeads.unshift(target);
       }
@@ -1386,7 +1439,7 @@ module.exports = async (req, res) => {
 
       // Customer messaged in again → they are a live lead, drop any stale
       // blacklist entry for this phone so the sync filters don't nuke them.
-      unblacklistKeys(leadObj);
+      await unblacklistKeys(leadObj);
 
       // Check if lead exists in memoryLeads (e.g. old customer giving number again today)
       const existingIdx = memoryLeads.findIndex(l => (leadObj.id && l.id === leadObj.id) || l.phone === leadObj.phone);
