@@ -375,6 +375,7 @@
     .badge-ma::before   { background: #7c3aed; }
     .badge-pook::before { background: var(--danger); }
     .badge-fern::before { background: #0d9488; }
+    .badge-beer::before { background: #db2777; }
 
     /* TABLE SECTION */
     .table-card {
@@ -788,7 +789,7 @@
       <!-- 2. Bar Chart: การกระจายเคสให้เซลล์ -->
       <div class="chart-card">
         <div class="chart-title">
-          <span>👥 การกระจายเคสให้เซลล์ (8 คน)</span>
+          <span>👥 การกระจายเคสให้เซลล์ (<span id="salesCountLabel1">8</span> คน)</span>
           <span class="chart-sub">จำนวนเคสต่อคน</span>
         </div>
         <div class="chart-container">
@@ -799,7 +800,7 @@
       <!-- 3. Sales Reps Badges & Count -->
       <div class="chart-card">
         <div class="chart-title">
-          <span>🛡️ ทีมเซลล์ที่รับผิดชอบ (8 คน)</span>
+          <span>🛡️ ทีมเซลล์ที่รับผิดชอบ (<span id="salesCountLabel2">8</span> คน)</span>
         </div>
         <div class="sales-grid" id="salesTeamList">
           <!-- Populated by JS -->
@@ -1212,13 +1213,14 @@
       { name: 'เกด', badgeClass: 'badge-ked' },
       { name: 'ม่า', badgeClass: 'badge-ma' },
       { name: 'ปุ๊ก', badgeClass: 'badge-pook' },
-      { name: 'เฟิร์น', badgeClass: 'badge-fern' }
+      { name: 'เฟิร์น', badgeClass: 'badge-fern' },
+      { name: 'เบียร์', badgeClass: 'badge-beer' }
     ];
 
-    // Team groupings for the weekly report (all 8 current reps, no leftovers)
+    // Team groupings for the weekly report (all current reps, no leftovers)
     const SALES_TEAM_GROUPS = [
       { team: 'ทีม A', members: ['ปุ๊ก', 'จิ๊บ', 'อั๋น'] },
-      { team: 'ทีม B', members: ['เฟิร์น', 'วุธ'] },
+      { team: 'ทีม B', members: ['เฟิร์น', 'วุธ', 'เบียร์'] },
       { team: 'ทีม C', members: ['ท็อป', 'เกด', 'ม่า'] }
     ];
 
@@ -1540,7 +1542,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.09.14.9';
+    const APP_VERSION = '2026.09.28.1';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
@@ -2218,6 +2220,11 @@
     }
 
     function renderSalesList() {
+      const l1 = document.getElementById('salesCountLabel1');
+      if (l1) l1.textContent = SALES_TEAM.length;
+      const l2 = document.getElementById('salesCountLabel2');
+      if (l2) l2.textContent = SALES_TEAM.length;
+
       const container = document.getElementById('salesTeamList');
       if (!container) return;
       container.innerHTML = '';
