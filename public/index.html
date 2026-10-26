@@ -1542,7 +1542,7 @@
     // ----------------------------------------------------
     // SECURE AUTHENTICATED FETCH & HTTPONLY COOKIE SESSION ENGINE
     // ----------------------------------------------------
-    const APP_VERSION = '2026.09.28.1';
+    const APP_VERSION = '2026.10.26.1';
     let lastSyncTimestamp = 0;
     let currentUserRole = null; // 'admin' | 'sales' | null (not logged in)
     let isPromptingLogin = false;
@@ -1763,6 +1763,32 @@
         localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(list.slice(-500)));
       } catch(e) {}
       return list;
+    }
+
+    // Inverse of addToBlacklist(): forget a lead's phone/id locally so it stops
+    // being filtered/dropped. Used when the admin explicitly (re-)adds a
+    // lead — otherwise a phone that was ever deleted stayed in the browser's
+    // blacklist forever and applyPending()/cleanse dropped the brand-new
+    // lead on the next poll ("เพิ่มเคสแล้วมันลบเอง").
+    function removeFromLocalBlacklist(lead) {
+      if (!lead) return;
+      try {
+        const remove = new Set();
+        if (lead.id) remove.add(String(lead.id).trim());
+        if (lead.phone) {
+          const raw = String(lead.phone).trim();
+          remove.add(raw);
+          remove.add(raw.replace(/[\s\-\.\/]/g, ''));
+          const c = extractThaiPhone(raw);
+          if (c) remove.add(c);
+          if (lead.name) remove.add(`${String(lead.name).trim()}_${raw}`);
+        }
+        remove.forEach(k => { recentlyDeleted.delete(k); });
+        const bl = getLocalBlacklist().filter(d => !remove.has(String(d).trim()));
+        deletedBlacklistSet.clear();
+        bl.forEach(d => deletedBlacklistSet.add(d));
+        localStorage.setItem('pancake_deleted_lead_ids', JSON.stringify(bl.slice(-500)));
+      } catch(e) {}
     }
 
     function isLeadBlacklisted(lead, blacklist) {
@@ -3495,6 +3521,7 @@ ${teamLines}
       const ad = document.getElementById('simAd') ? document.getElementById('simAd').value.trim() : 'คลิปรีวิวหัวลาก ISUZU 360';
       const { date, time } = getNowThai();
       const newLead = { date, time, source, ad, name, phone, truck, sales: '', report: '' };
+      removeFromLocalBlacklist(newLead);
       leads.unshift(newLead);
       saveLeadState(newLead);
       updateAll();
@@ -3530,6 +3557,7 @@ ${teamLines}
       const { date, time } = getNowThai();
 
       const newLead = { date, time, source, ad, name, phone, truck, sales, report: '' };
+      removeFromLocalBlacklist(newLead); // explicit re-add of a previously deleted number
       leads.unshift(newLead);
       saveLeadState(newLead);
       updateAll();
