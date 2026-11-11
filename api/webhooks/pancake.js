@@ -5,7 +5,7 @@
 const { google } = require('googleapis');
 const https = require('https');
 
-const APP_VERSION = '2026.11.11.1';
+const APP_VERSION = '2026.11.11.2';
 
 // ---------------------------------------------------------------------------
 // STORAGE LAYER
@@ -1250,8 +1250,27 @@ module.exports = async (req, res) => {
       }
       let salesSheetTarget = null;
       if (payload?.lead) {
-        const target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
-        if (applySalesEdit(target, payload.lead)) salesSheetTarget = target;
+        let target = memoryLeads.find(l => (payload.lead.id && l.id === payload.lead.id) || l.phone === payload.lead.phone);
+        // Manual "+เพิ่มเคสเอง" by a sales user (e.g. a Marketplace lead, which
+        // has no PanCake webhook): saveManualLead() never sets an id, so no id +
+        // unknown phone = a genuine new case. This branch used to only patch
+        // existing leads, so the new case showed locally and vanished on the next
+        // poll. Create it with the non-admin fields only; a stale edit of a
+        // just-deleted lead always carries its id and is still ignored.
+        if (!target && payload.lead.phone && !payload.lead.id) {
+          const src = payload.lead;
+          await unblacklistKeys(src, { respectGracePeriod: false });
+          target = {
+            id: 'lead_' + Date.now(),
+            date: src.date, time: src.time, source: src.source, ad: src.ad || '',
+            name: src.name || '', phone: src.phone,
+            truck: src.truck || '', sales: src.sales || '', report: src.report || ''
+          };
+          memoryLeads.unshift(target);
+          salesSheetTarget = target;
+        } else if (applySalesEdit(target, payload.lead)) {
+          salesSheetTarget = target;
+        }
       }
       await saveCloudData(memoryLeads, memoryTruckTypes, webhookLogs, memoryDeletedIds, memoryChannels);
       if (salesSheetTarget) { syncToGoogleSheets(salesSheetTarget).catch(() => {}); }

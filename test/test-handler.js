@@ -53,7 +53,7 @@ async function runAllTests() {
     await pancakeHandler(req, res);
     assert.strictEqual(resData.statusCode, 200, 'GET should return 200');
     assert.strictEqual(resData.body.status, 'online', 'Status should be online');
-    assert.strictEqual(resData.body.appVersion, '2026.11.11.1', 'App version must match');
+    assert.strictEqual(resData.body.appVersion, '2026.11.11.2', 'App version must match');
     assert.ok(typeof resData.body.serverTimestamp === 'number', 'Server timestamp must be present');
     assert.ok(resData.headers['cache-control']?.includes('no-cache'), 'Cache-Control header must be set to no-cache');
     assert.ok(Array.isArray(resData.body.leads), 'Leads should be an array');
@@ -262,6 +262,38 @@ async function runAllTests() {
     assert.strictEqual(lead.sales, 'เกด', 'sales-assignment made by a sales user must persist');
     assert.strictEqual(lead.source, 'TikTok', 'sales-picked channel/source must persist');
     console.log('✅ Test 8c Passed: sales edits to truck/sales/source persist (not just report)');
+  }
+
+  // Test 8d: a SALES user's manual "+เพิ่มเคสเอง" (no id, e.g. a Marketplace
+  // lead) must create the case — it used to be silently dropped, so the case
+  // showed locally then vanished on the next poll. Admin-only fields stay
+  // admin-only, and a stale edit carrying an id must NOT resurrect anything.
+  {
+    const sales = { 'x-pancake-secret': 'kp_sales_4a7c8e2b9d1f3068e5b7a2c4d9f103b872e4a9c1d5f8b0e3a6c2d4f8b9e1a3c5' };
+    const admin = { 'x-pancake-secret': 'kp_admin_9f8d3a1b7c4e2095f6a8e1b4c3d702e961fae40b3c2d89a7102e5c8b7a4d3f1e' };
+    const phone = '0911223344';
+
+    let m = createMockReqRes({ method: 'POST', query: { action: 'sync_state' }, headers: sales,
+      body: { lead: { date: '11/11/2026', time: '12:00:00', source: 'Marketplace', ad: '', name: 'ลูกค้ามาร์เก็ต', phone, truck: '', sales: 'เบียร์', report: '', teamLeadReport: 'แอบใส่', closed: 'won' } } });
+    await pancakeHandler(m.req, m.res);
+    assert.strictEqual(m.resData.statusCode, 200);
+
+    m = createMockReqRes({ method: 'GET', headers: admin });
+    await pancakeHandler(m.req, m.res);
+    const lead = m.resData.body.leads.find(l => l.phone === phone);
+    assert.ok(lead, 'sales-created manual case must persist');
+    assert.strictEqual(lead.source, 'Marketplace');
+    assert.strictEqual(lead.sales, 'เบียร์');
+    assert.ok(!lead.teamLeadReport && !lead.closed, 'sales cannot set admin-only fields on create');
+
+    // stale edit (has an id) for a lead that doesn't exist must not create it
+    m = createMockReqRes({ method: 'POST', query: { action: 'sync_state' }, headers: sales,
+      body: { lead: { id: 'ghost_id', phone: '0900000999', name: 'ผี', report: 'x' } } });
+    await pancakeHandler(m.req, m.res);
+    m = createMockReqRes({ method: 'GET', headers: admin });
+    await pancakeHandler(m.req, m.res);
+    assert.ok(!m.resData.body.leads.find(l => l.phone === '0900000999'), 'stale sales edit must not create a lead');
+    console.log('✅ Test 8d Passed: sales manual add persists; admin-only fields & stale edits stay blocked');
   }
 
   // Test 9: Lead Deletion & Cloud Blacklist
